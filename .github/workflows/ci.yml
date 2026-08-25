@@ -30,16 +30,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The scaffold lands before the platform source does. Until package.json
+      # exists there is nothing to build, and a job that is red from day one
+      # trains everyone to ignore CI.
+      - id: src
+        run: |
+          if [ -f package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "present=false" >> "$GITHUB_OUTPUT"
+               echo "::notice::No package.json yet — skipping build until the platform source is imported."
+          fi
       - uses: actions/setup-node@v4
+        if: steps.src.outputs.present == 'true'
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
+      - if: steps.src.outputs.present == 'true'
+        run: npm ci
       # Prisma's client is generated, not committed — the build needs it first.
       # A dummy URL is enough for `generate`; it never connects.
-      - run: npx prisma generate
+      - if: steps.src.outputs.present == 'true'
+        run: npx prisma generate
         env:
           DATABASE_URL: postgresql://user:pass@localhost:5432/db
-      - run: npm run build
+      - if: steps.src.outputs.present == 'true'
+        run: npm run build
         env:
           DATABASE_URL: postgresql://user:pass@localhost:5432/db
