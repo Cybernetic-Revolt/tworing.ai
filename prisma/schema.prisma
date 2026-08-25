@@ -145,6 +145,7 @@ model Org {
   messages          Message[]
   smsThreads        SmsThread[]
   subscription      Subscription?
+  assistants        Assistant[]
 }
 
 // Stripe subscription state, synced from webhooks. Drives tier entitlements
@@ -286,8 +287,13 @@ model PhoneNumber {
   smsEnabled      Boolean @default(false)
   cnam            String? // outbound caller-ID name
 
-  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  calls Call[]
+  // Which assistant answers this number. Nullable because a DID can exist before an
+  // assistant is configured for it, which is the normal order when provisioning.
+  assistantId String?
+
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assistant Assistant? @relation(fields: [assistantId], references: [id], onDelete: SetNull)
+  calls     Call[]
 
   @@index([orgId])
 }
@@ -530,4 +536,115 @@ model PasswordReset {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+enum AssistantStatus {
+  PRODUCTION // answering real calls today
+  TEMPLATE   // exists and is configured, but not carrying traffic
+  RETIRED    // kept for the record; must never be dispatched to
+}
+
+// How a caller relates to the principal. Drives how the assistant greets and screens them —
+// the difference between "Hi Julia, good to hear from you" and "who's calling?".
+enum ContactRelation {
+  PRINCIPAL // the person the assistant works for; recognising this number is what
+            // switches an assistant out of screening mode. Getting it wrong means the
+            // owner is screened by their own assistant.
+  FAMILY
+  WORK
+  KNOWN     // recognised, no closer classification
+  BLOCKED   // recognised and deliberately screened out
+}
+
+// One AI receptionist, as configuration rather than as text in a vendor's dashboard.
+//
+// Every field here was previously either inside Vapi's UI or hard-coded in a prompt. That is
+// the reason this model exists: the product's most important data lived in a third party that
+// is being switched off, and could not be read, versioned, or edited from the product itself.
+model Assistant {
+  id     String          @id @default(cuid())
+  orgId  String
+  key    String          @unique // stable slug used in logs and the engine catalog: "ada", "kelly"
+  name   String
+  status AssistantStatus @default(TEMPLATE)
+
+  // --- what the caller hears, and what the model is told -------------------------------
+  greeting     String
+  systemPrompt String @db.Text
+
+  // Appended to the greeting when recordsCall is true. Kept separate from the greeting so the
+  // legal wording can be reviewed on its own, and so a greeting cannot be edited in a way that
+  // silently drops it. PIPEDA guidance is that the notice must state the PURPOSE, not merely
+  // that recording occurs.
+  recordingNotice String?
+  recordsCall     Boolean @default(true)
+
+  // --- voice ---------------------------------------------------------------------------
+  // Never defaulted. Vapi's voice ids ("Layla", "Elliot") exist on no other vendor, so a
+  // default would put a stranger's speech in front of callers with nobody having chosen it.
+  voiceProvider String  @default("elevenlabs")
+  voiceId       String?
+
+  // --- call control --------------------------------------------------------------------
+  // Fire on the ASSISTANT's speech, never the caller's — applying them to caller speech
+  // would hang up on "have a good one, but listen, my pipe burst".
+  endCallPhrases  String[]
+  endCallMessage  String?
+  transferTo      String?
+  transferMessage String?
+
+  // Null means no limit was ever set, which is different from the default. Carrying 20/900
+  // for an assistant that had neither would make this a record of our assumptions rather
+  // than of what actually ran.
+  silenceTimeoutSeconds Int?
+  maxDurationSeconds    Int?
+
+  // --- tools the model may call --------------------------------------------------------
+  // A prompt that discusses booking with no booking tool attached produces an assistant that
+  // discusses booking and then silently never books. Keeping the list here makes that
+  // mismatch checkable instead of invisible.
+  tools String[]
+
+  // --- provenance ----------------------------------------------------------------------
+  // What Vapi ran, kept as history rather than as settings. vapiVoice in particular is a
+  // record of a voice that cannot be reproduced anywhere else.
+  vapiAssistantId String?
+  vapiModel       String?
+  vapiVoice       String?
+  notes           String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org          Org                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contacts     AssistantContact[]
+  phoneNumbers PhoneNumber[]
+
+  @@index([orgId])
+  @@index([status])
+}
+
+// A person the assistant should recognise by number.
+//
+// This exists because the alternative does not work. Ada's prompt carried a "Known People"
+// block with literal [add number] placeholders, so caller identification could never fire —
+// including for the principal's own number, which meant the owner was screened by his own
+// assistant. Recognition has to be a lookup against data, not a paragraph a model reads.
+model AssistantContact {
+  id          String          @id @default(cuid())
+  assistantId String
+  e164        String // normalised at write time; the lookup key
+  name        String
+  relation    ContactRelation @default(KNOWN)
+  note        String? // "Billy's partner", "primary contact at Banyan"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assistant Assistant @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+
+  // One entry per number per assistant: two rows for the same caller would make which name
+  // is greeted depend on row order.
+  @@unique([assistantId, e164])
+  @@index([assistantId])
 }
