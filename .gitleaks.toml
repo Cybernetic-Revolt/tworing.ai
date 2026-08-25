@@ -1,0 +1,101 @@
+# gitleaks config for the tworing platform repo.
+#
+# This is a CODE repo carrying a live product for paying clients, so the realistic
+# leak is not a pasted password in a doc — it is a real credential committed in a
+# config file, a Prisma seed, or a test fixture. .gitignore blocks `.env`; these
+# rules cover everything .gitignore cannot see.
+#
+# Go's RE2 engine: no lookahead, no backreferences. Shell/JS variable syntax is
+# excluded via character classes and the allowlist below, so `process.env.X` and
+# `$VAR` do not fire.
+
+title = "tworing platform"
+
+[extend]
+useDefault = true
+
+# --- credentials this product actually holds ---------------------------------
+#
+# Keyed off our own variable names rather than each vendor's token format, so a
+# provider changing its encoding does not silently disable the rule.
+# `secretGroup` points entropy scoring at the value, not the assignment.
+
+[[rules]]
+id = "tworing-database-url"
+description = "Postgres connection string with an inline password"
+# postgres://user:PASSWORD@host/db — the password is the capture group.
+regex = '''(?i)postgres(?:ql)?://[A-Za-z0-9._\-]+:([^@\s/$"'{]{8,})@'''
+secretGroup = 1
+keywords = ["postgres://", "postgresql://"]
+entropy = 2.5
+
+[[rules]]
+id = "tworing-carrier-credentials"
+description = "VoIP.ms or Telnyx credential assigned a literal value"
+regex = '''(?i)(?:VOIPMS_API_PASSWORD|VOIPMS_API_USERNAME|TELNYX_API_KEY)\s*[=:]\s*["']?([A-Za-z0-9._\-]{12,})'''
+secretGroup = 1
+keywords = ["voipms_api_password", "voipms_api_username", "telnyx_api_key"]
+entropy = 3.0
+
+[[rules]]
+id = "tworing-voice-provider-keys"
+description = "Voice/AI provider key assigned a literal value"
+regex = '''(?i)(?:VAPI_API_KEY|ELEVENLABS_API_KEY|DEEPGRAM_API_KEY|CARTESIA_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)\s*[=:]\s*["']?([A-Za-z0-9._\-]{16,})'''
+secretGroup = 1
+keywords = ["vapi_api_key", "elevenlabs_api_key", "deepgram_api_key", "cartesia_api_key", "anthropic_api_key", "openai_api_key"]
+entropy = 3.0
+
+[[rules]]
+id = "tworing-integration-secrets"
+description = "Stripe / Jobber / Google integration secret assigned a literal value"
+regex = '''(?i)(?:STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|JOBBER_CLIENT_SECRET|GOOGLE_CLIENT_SECRET|NEXTAUTH_SECRET|INGEST_KEY)\s*[=:]\s*["']?([A-Za-z0-9._\-]{16,})'''
+secretGroup = 1
+keywords = ["stripe_secret_key", "stripe_webhook_secret", "jobber_client_secret", "google_client_secret", "nextauth_secret", "ingest_key"]
+entropy = 3.0
+
+[[rules]]
+id = "tworing-credential-literal"
+description = "Password or token assigned a literal high-entropy value"
+# Leading class omits $ ( { ` so `"$TOKEN"`, `"${X}"` and template literals miss.
+regex = '''(?i)(?:password|passwd|secret|api[_-]?key|token)\s*[=:]\s*["']([A-Za-z0-9!@#%^&*._\-][A-Za-z0-9!@#$%^&*._\-]{19,})["']'''
+secretGroup = 1
+keywords = ["password", "passwd", "secret", "api_key", "apikey", "token"]
+entropy = 3.5
+
+# --- allowlist ---------------------------------------------------------------
+
+[[allowlists]]
+description = "Placeholders, generated files, and non-credential file types"
+
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.gitleaks\.toml$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)(yarn\.lock|pnpm-lock\.yaml)$''',
+  # Prisma's generated client is vendor code, not ours.
+  '''(^|/)node_modules/''',
+]
+
+regexes = [
+  # How code correctly refers to secrets.
+  '''process\.env\.[A-Za-z_][A-Za-z0-9_]*''',
+  '''\$\{?[A-Za-z_][A-Za-z0-9_]*\}?''',
+  '''\$\([^)]*\)''',
+  # Obvious placeholders.
+  '''(?i)(your|my|the)[-_ ]?(api[-_ ]?key|token|password|secret)''',
+  '''(?i)<[a-z0-9 _-]{1,40}>''',
+  '''(?i)(xxx+|yyy+|zzz+|placeholder|example|redacted|changeme|dummy|fake|sample)''',
+  # Stripe/OpenAI publishable + documented test values.
+  '''(?i)(pk_test_|pk_live_|sk_test_51example)''',
+]
+
+# A "secret" whose entire value is a dictionary placeholder is not a credential.
+# gitleaks matches allowlist regexes against the captured secret, not the line,
+# so `postgresql://user:password@host` in a README is only excusable here —
+# the surrounding word "example" is never in scope. Anchored end-to-end, so
+# `Hunter2Hunter2Xk9` still fires.
+[[allowlists]]
+description = "Whole-value placeholders in documented connection strings"
+regexes = [
+  '''(?i)^(password|passwd|pass|secret|token|user|username|changeme|yourpassword|localhost|test|example)$''',
+]

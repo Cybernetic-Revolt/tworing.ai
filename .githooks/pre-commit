@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Block commits that introduce secrets into this repo.
+#
+# Enable with:  scripts/install-hooks.sh   (sets core.hooksPath to .githooks)
+#
+# Scans only what is staged, so it stays fast and never re-flags history.
+# If gitleaks is missing the hook FAILS the commit rather than passing silently —
+# a scanner that quietly stops scanning is worse than no scanner, because you
+# stop thinking about it.
+
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+pre-commit: gitleaks not found on PATH.
+
+This repo requires gitleaks so that a pasted credential cannot reach a commit.
+Install it (https://github.com/gitleaks/gitleaks), then retry.
+
+To bypass for one commit — only for a change you have read in full and know
+carries no credential:
+
+    git commit --no-verify
+
+EOF
+  exit 1
+fi
+
+if ! gitleaks git --staged --pre-commit --redact --no-banner \
+       --config "$(git rev-parse --show-toplevel)/.gitleaks.toml"; then
+  cat >&2 <<'EOF'
+
+pre-commit: BLOCKED — gitleaks flagged staged content above (values redacted).
+
+If it is a real secret:
+  1. Unstage the file:            git restore --staged <file>
+  2. Remove the value from it.    The secret belongs in Proton Pass.
+  3. Treat it as exposed if it ever reached disk in a shared location.
+
+If it is a false positive, add a narrow entry to .gitleaks.toml — scoped to the
+rule and path, never a blanket exclusion — or append `gitleaks:allow` to the line.
+
+EOF
+  exit 1
+fi

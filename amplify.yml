@@ -1,0 +1,27 @@
+# AWS Amplify Hosting build spec — Next.js (SSR) + Prisma.
+#
+# Environment variables (DATABASE_URL, STRIPE_*, VOIPMS_*, …) are set in the
+# Amplify console, never here. See .env.example for the full list.
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+        # Prisma's client is generated at build time; it is gitignored.
+        - npx prisma generate
+    build:
+      commands:
+        # Migrations run here so a deploy and its schema move together. If you
+        # would rather gate them behind a human, drop this line and run
+        # `prisma migrate deploy` from a bastion before promoting the build.
+        - npx prisma migrate deploy
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
