@@ -1,53 +1,60 @@
-# tworing
+# Bilco Platform
 
-**tworing.ai** — a 24/7 AI receptionist for Alberta trades businesses. Answers forwarded
-calls within two rings, books appointments into the customer's calendar mid-call, emails
-lead summaries, and produces a monthly Found Money Report.
+Multi-tenant web platform behind the Bilco Works AI receptionist. One pipeline serves every tier — tiers are entitlements, not separate products.
 
-Multi-tenant SaaS: Next.js 16 + Prisma + Postgres. Owns tenants, calls, recordings,
-transcripts, leads, booking, billing, the Google and Jobber integrations, the admin views,
-and the customer portal.
+| Tier | Price (CAD/mo) | Gets |
+|---|---|---|
+| Answer | $179 | AI answers + email/SMS lead summary (no login) |
+| Office | $349 | Portal: call log, transcripts, recordings, two-way SMS |
+| Operations | $599 | + lead pipeline (light CRM), Jobber/HubSpot sync |
+| Custom | quoted | Multi-location, managed phone |
 
-> **Private repo.** It carries the business logic and data model for real paying clients.
+Full business model: `C:\Users\login\Documents\Bilco_Platform_Business_Plan_v4.md` (current; v3 preserved alongside it)
 
-## Setup
+## Architecture
+
+```
+Caller → VoIP.ms DID → Vapi assistant (per-tenant)
+                          │ end-of-call-report webhook
+                          ▼
+              POST /api/ingest/vapi  (X-Bilco-Ingest-Key per tenant)
+                          │
+                          ▼
+                     Postgres (Prisma)
+            orgs · users · calls · leads · keys
+                          │
+                          ▼
+            Portal (Office/Operations tiers)
+```
+
+n8n (LXC 127) remains the notification/integration sidecar — it currently owns
+live call events and the owner-summary email. As the platform matures, n8n
+subscribes to this app's events instead of receiving Vapi's directly.
+
+## Dev setup
 
 ```bash
-npm ci
-cp .env.example .env          # fill in from the password manager — never commit .env
-npx prisma generate
-npx prisma migrate deploy
+cp .env.example .env
+docker compose up -d db        # Postgres 16 on localhost:5433
+npx prisma migrate dev         # create schema
 npm run dev
 ```
 
-## Secret scanning — run this once per clone
+## Status / roadmap (Phase 1 of the v3 plan)
 
-```bash
-scripts/install-hooks.sh
-```
+- [x] Next.js scaffold (App Router, TS, Tailwind)
+- [x] Multi-tenant Prisma schema (Org, User, Membership, PhoneNumber, Call, Lead, IngestKey)
+- [x] Vapi end-of-call ingestion endpoint with per-tenant hashed keys
+- [ ] First migration applied against local Postgres
+- [ ] Auth (credentials via Auth.js) + org-scoped sessions
+- [ ] Read-only portal: call log, call detail (transcript, recording, summary)
+- [ ] Lead inbox (read-only in Phase 1; pipeline states are Phase 3)
+- [ ] Vapi → platform webhook cutover (n8n becomes subscriber)
 
-Git does not clone hooks, so every machine needs this. It points `core.hooksPath` at
-`.githooks/`, where a pre-commit hook scans staged content with
-[gitleaks](https://github.com/gitleaks/gitleaks) and blocks the commit on a hit. If
-gitleaks is missing the hook **fails** rather than passing silently.
+## Decisions
 
-`.github/workflows/ci.yml` rescans on every push as a backstop, catching anything
-committed with `--no-verify` or from a clone where the hook was never installed.
-
-**A pushed credential is a leaked credential** — `git rm` afterwards does not undo it.
-Rotate it instead.
-
-## Deployment
-
-AWS Amplify Hosting builds from this repo on push; see `amplify.yml`. Environment
-variables are set in the Amplify console, not in the repo. Region is `ca-west-1`
-(Calgary) — data residency is a selling point, so keep it Canadian.
-
-## Layout
-
-| Path | What |
-|---|---|
-| `app/` | Next.js routes — marketing site, `/login`, `/app` portal, `/admin` |
-| `app/api/` | Webhook + tool endpoints the voice engine calls |
-| `prisma/` | Schema and migrations |
-| `lib/` | Carrier, calendar, and integration clients |
+- **Prisma + Postgres** — matches the existing bilcoworks-site stack.
+- **Tiers as an enum on Org** — entitlement limits (minute caps, seat counts) live in code, keyed by tier; revisit if per-org overrides become real.
+- **Ingest auth = per-tenant random key, SHA-256 stored** — Vapi can send custom headers per assistant; n8n can forward with the same header during transition.
+- **Only end-of-call-report persisted** — live status/transcript events return 204 and stay n8n's job until the portal needs them.
+- **Local dev DB on port 5433** — 5432 is taken by an existing Postgres in WSL2.

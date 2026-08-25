@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bilco-platform-db
+    environment:
+      POSTGRES_USER: bilco
+      POSTGRES_PASSWORD: bilco
+      POSTGRES_DB: bilco_platform
+    # 5433 to avoid the existing Postgres on 5432 (WSL2 docker)
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

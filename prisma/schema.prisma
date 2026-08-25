@@ -1,0 +1,533 @@
+// Bilco Platform — multi-tenant core schema (Phase 1)
+// Every tenant-owned row carries orgId; all queries MUST be org-scoped.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Tier {
+  ANSWER // $179 — email-only, no portal login
+  OFFICE // $349 — portal: calls, transcripts, SMS
+  OPERATIONS // $599 — + lead pipeline, CRM sync, integrations
+  CUSTOM // quoted — multi-location, managed phone
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum CallStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  BOOKED
+  DONE
+  LOST
+}
+
+enum ApptStatus {
+  CONFIRMED
+  PENDING // confirm-first orgs: AI books pending, owner confirms
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ApptSource {
+  AI
+  PORTAL
+  JOBBER
+}
+
+enum BookingPolicy {
+  FIRM // AI bookings are final (default)
+  CONFIRM_FIRST // AI books PENDING, owner confirms
+}
+
+enum ActorKind {
+  AI
+  USER
+  SYSTEM
+  JOBBER
+}
+
+enum ActivityKind {
+  STATUS_CHANGE
+  NOTE
+  EMAIL
+  SMS
+  APPOINTMENT
+  SYNC
+}
+
+enum MessageChannel {
+  EMAIL
+  SMS
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  RECEIVED // inbound SMS
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+// CASL consent ledger per customer phone (per org).
+enum ConsentState {
+  UNKNOWN
+  IMPLIED
+  EXPRESS
+  OPTED_OUT
+}
+
+enum SubStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
+
+model Org {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  tier      Tier     @default(ANSWER)
+  timezone  String   @default("America/Edmonton")
+  // Lead-summary destination for ANSWER tier (and fallback for all tiers)
+  notifyEmail String?
+  // Public demo company: reachable via /demo, sessions are read-only, and
+  // only founder-controlled numbers may feed it (spec §10).
+  isDemoOrg Boolean  @default(false)
+  // Average job value ($CAD), set by the owner — powers the Found Money Report.
+  averageJobValue Int?
+  // Human-transfer destination — the AI warm-transfers here when a caller
+  // asks for a person. Must be a real human line, not one that forwards to AI.
+  transferNumber String?
+  // Review-request engine (Operations tier): Google review link + on/off.
+  googleReviewUrl String?
+  reviewRequests  Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members           Membership[]
+  phoneNumbers      PhoneNumber[]
+  calls             Call[]
+  callActions       CallAction[]
+  leads             Lead[]
+  ingestKeys        IngestKey[]
+  appointments      Appointment[]
+  availabilityRules AvailabilityRule[]
+  calendarSettings  CalendarSettings?
+  googleConnection  GoogleConnection?
+  jobberConnection  JobberConnection?
+  blockedNumbers    BlockedNumber[]
+  webhook           OrgWebhook?
+  messages          Message[]
+  smsThreads        SmsThread[]
+  subscription      Subscription?
+}
+
+// Stripe subscription state, synced from webhooks. Drives tier entitlements
+// and assistant pause-on-cancel.
+model Subscription {
+  id               String    @id @default(cuid())
+  orgId            String    @unique
+  stripeCustomerId String    @unique
+  stripeSubId      String?   @unique
+  status           SubStatus @default(TRIALING)
+  tier             Tier
+  currentPeriodEnd DateTime?
+  trialEndsAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// Every email/SMS the platform sends on an org's behalf — the "what did the
+// system send?" ledger shown in the portal Messages center (spec §4.7).
+model Message {
+  id            String         @id @default(cuid())
+  orgId         String
+  callId        String?
+  leadId        String?
+  appointmentId String?
+  channel       MessageChannel   @default(EMAIL)
+  direction     MessageDirection @default(OUTBOUND)
+  threadId      String? // SmsThread for SMS conversations
+  toAddress     String
+  fromAddress   String
+  subject       String?
+  body          String // rendered HTML (email) or text (SMS)
+  template      String? // catalog name; null for free-form/replies
+  status        MessageStatus    @default(QUEUED)
+  providerId    String? // Resend/VoIP.ms message id
+  error         String?
+  createdAt     DateTime         @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt(sort: Desc)])
+  @@index([threadId])
+}
+
+// One SMS conversation with a customer number (per org). Holds CASL consent.
+model SmsThread {
+  id             String       @id @default(cuid())
+  orgId          String
+  customerPhone  String // E.164
+  consentState   ConsentState @default(UNKNOWN)
+  consentAt      DateTime?
+  lastMessageAt  DateTime?
+  // Atomic throttle stamps: at most one auto-ack / owner-notify per window,
+  // claimed via a conditional updateMany (race-safe).
+  lastAutoAckAt  DateTime?
+  lastNotifiedAt DateTime?
+  createdAt      DateTime     @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, customerPhone])
+  @@index([orgId, lastMessageAt(sort: Desc)])
+}
+
+// Per-org Jobber link (Operations tier). Tokens encrypted at rest.
+model JobberConnection {
+  id           String    @id @default(cuid())
+  orgId        String    @unique
+  accessToken  String
+  refreshToken String
+  accountId    String?
+  mode         String    @default("REQUESTS") // REQUESTS | JOBS
+  syncEnabled  Boolean   @default(true)
+  lastSyncAt   DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// Generic signed outbound webhook — the universal adapter to Zapier/Make/n8n
+// and thus to closed apps with no API (e.g. Yardbook). Fires on lead.created
+// and appointment.created with the org id in the payload so a single Zapier
+// account can route per client.
+model OrgWebhook {
+  id          String    @id @default(cuid())
+  orgId       String    @unique
+  url         String
+  secret      String // HMAC-SHA256 signing secret (header x-tworing-signature)
+  enabled     Boolean   @default(true)
+  lastStatus  Int? // last HTTP status returned by the target
+  lastFiredAt DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String? // credentials auth lands in Phase 2; null = invite pending
+  isEngineer Boolean  @default(false) // platform staff: full /admin access across orgs
+  sessionEpoch Int    @default(0) // bump to revoke all of a user's outstanding sessions
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships    Membership[]
+  passwordResets PasswordReset[]
+}
+
+model Membership {
+  id     String     @id @default(cuid())
+  userId String
+  orgId  String
+  role   MemberRole @default(MEMBER)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+}
+
+model PhoneNumber {
+  id              String  @id @default(cuid())
+  orgId           String
+  e164            String  @unique
+  label           String?
+  provider        String  @default("voipms")
+  vapiAssistantId String?
+  sipSubaccount   String? // VoIP.ms subaccount feeding Vapi
+  failoverE164    String? // carrier failover target (no-dead-air guarantee)
+  smsEnabled      Boolean @default(false)
+  cnam            String? // outbound caller-ID name
+
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calls Call[]
+
+  @@index([orgId])
+}
+
+// What actually happened on a call, shown as the outcome in the call log.
+enum CallDisposition {
+  BOOKED // a new appointment was booked
+  RESCHEDULED // an existing appointment was moved
+  CANCELLED // an appointment was cancelled
+  MESSAGE // a message/callback was taken
+  INQUIRY // answered, info given, no action
+  MISSED // caller dropped almost immediately, nothing captured
+}
+
+model Call {
+  id            String           @id @default(cuid())
+  orgId         String
+  phoneNumberId String?
+  vapiCallId    String           @unique
+  callerNumber  String?
+  callerName    String?
+  status        CallStatus       @default(COMPLETED)
+  disposition   CallDisposition?
+  endedReason   String?
+  startedAt     DateTime
+  endedAt       DateTime?
+  durationSec   Int?
+  summary       String?
+  transcript    String?
+  recordingUrl  String?
+  costUsd       Decimal?         @db.Decimal(10, 4)
+  raw           Json? // full end-of-call-report for fields we don't model yet
+  // A lead is one-per-caller (deduped by phone); many calls point to it.
+  leadId        String?
+
+  org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  phoneNumber  PhoneNumber?  @relation(fields: [phoneNumberId], references: [id])
+  lead         Lead?         @relation(fields: [leadId], references: [id])
+  appointments Appointment[]
+
+  @@index([orgId, startedAt(sort: Desc)])
+  @@index([orgId, disposition])
+  @@index([leadId])
+}
+
+// An action the AI took mid-call (booked/rescheduled/cancelled/took a message),
+// stamped with the Vapi call id before the Call row exists. The end-of-call
+// ingest reads these to set Call.disposition, then they remain as an audit trail.
+model CallAction {
+  id         String   @id @default(cuid())
+  orgId      String
+  vapiCallId String
+  kind       String // BOOK | RESCHEDULE | CANCEL | MESSAGE
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([vapiCallId])
+  @@index([orgId])
+}
+
+model Lead {
+  id        String     @id @default(cuid())
+  orgId     String
+  // One lead per caller within an org; repeat calls enrich the same lead.
+  vapiCallId String?
+  name      String?
+  phone     String
+  email     String?
+  jobType   String?
+  address   String?
+  urgency   String?
+  status    LeadStatus @default(NEW)
+  notes     String?
+  // Jobber Client created for this lead (Operations tier) — lets a later
+  // booking upgrade the client to a Request.
+  jobberClientId String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  org          Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calls        Call[]
+  appointments Appointment[]
+  activity     LeadActivity[]
+
+  @@unique([orgId, phone])
+  @@index([orgId, status])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@index([vapiCallId])
+}
+
+// Timeline shown on the lead card: status changes, notes, and (later)
+// emails/SMS/appointments/Jobber syncs that touch the lead.
+model LeadActivity {
+  id        String       @id @default(cuid())
+  orgId     String
+  leadId    String
+  actor     ActorKind
+  kind      ActivityKind
+  payload   Json // { from, to } for status; { text } for note; etc.
+  createdAt DateTime     @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt(sort: Desc)])
+}
+
+model Appointment {
+  id            String     @id @default(cuid())
+  orgId         String
+  leadId        String?
+  callId        String?
+  // Tool calls happen mid-call, before the Call row exists; ingest links
+  // callId/leadId when the end-of-call report arrives with this vapiCallId.
+  vapiCallId    String?
+  title         String
+  customerName  String?
+  customerPhone String?
+  address       String?
+  jobType       String?
+  startsAt      DateTime
+  endsAt        DateTime
+  status        ApptStatus @default(CONFIRMED)
+  source        ApptSource @default(PORTAL)
+  notes         String?
+  googleEventId String?
+  // Jobber Request created for this booking (Client -> Request upgrade).
+  jobberRequestId String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  org  Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead Lead? @relation(fields: [leadId], references: [id])
+  call Call? @relation(fields: [callId], references: [id])
+
+  @@index([orgId, startsAt])
+  @@index([vapiCallId])
+}
+
+// Per-org caller blocklist. Enforcement at the carrier (VoIP.ms CallerID
+// filtering) is wired separately for org-owned DIDs; this is the record.
+model BlockedNumber {
+  id        String   @id @default(cuid())
+  orgId     String
+  e164      String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, e164])
+  @@index([orgId])
+}
+
+// Weekly recurring open windows, minutes from midnight in the org's timezone.
+model AvailabilityRule {
+  id       String @id @default(cuid())
+  orgId    String
+  weekday  Int // 0 = Sunday … 6 = Saturday
+  startMin Int
+  endMin   Int
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+}
+
+model CalendarSettings {
+  id                String        @id @default(cuid())
+  orgId             String        @unique
+  slotMinutes       Int           @default(120)
+  bufferMinutes     Int           @default(30)
+  maxPerDay         Int           @default(6)
+  emergencyOverride Boolean       @default(true)
+  bookingPolicy     BookingPolicy @default(FIRM)
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// Per-org Google Calendar link. The refresh token is encrypted at rest
+// (TOKEN_ENCRYPTION_KEY); calendarId null until the org picks a target.
+model GoogleConnection {
+  id           String    @id @default(cuid())
+  orgId        String    @unique
+  email        String
+  refreshToken String
+  calendarId   String?
+  syncEnabled  Boolean   @default(true)
+  lastSyncAt   DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// Per-tenant webhook auth: Vapi (or n8n forwarding) presents the raw key,
+// we store only its SHA-256 hash.
+model IngestKey {
+  id         String    @id @default(cuid())
+  orgId      String
+  keyHash    String    @unique
+  label      String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+}
+
+// Public "start free" signups from the marketing site — sales-led onboarding.
+// Not yet a tenant; the founder provisions the org manually and marks handled.
+model Signup {
+  id        String   @id @default(cuid())
+  business  String
+  name      String
+  email     String
+  phone     String
+  trade     String?
+  city      String?
+  notes     String?
+  handled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Password-reset tokens. Only the SHA-256 hash of the token is stored; the raw
+// token lives only in the emailed link. Single-use and short-lived.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

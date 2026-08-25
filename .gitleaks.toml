@@ -32,7 +32,7 @@ entropy = 2.5
 [[rules]]
 id = "tworing-carrier-credentials"
 description = "VoIP.ms or Telnyx credential assigned a literal value"
-regex = '''(?i)(?:VOIPMS_API_PASSWORD|VOIPMS_API_USERNAME|TELNYX_API_KEY)\s*[=:]\s*["']?([A-Za-z0-9._\-]{12,})'''
+regex = '''(?i)(?:VOIPMS_API_PASSWORD|VOIPMS_API_USERNAME|TELNYX_API_KEY)[ \t]*[=:][ \t]*["']?([A-Za-z0-9._\-]{12,})'''
 secretGroup = 1
 keywords = ["voipms_api_password", "voipms_api_username", "telnyx_api_key"]
 entropy = 3.0
@@ -40,7 +40,7 @@ entropy = 3.0
 [[rules]]
 id = "tworing-voice-provider-keys"
 description = "Voice/AI provider key assigned a literal value"
-regex = '''(?i)(?:VAPI_API_KEY|ELEVENLABS_API_KEY|DEEPGRAM_API_KEY|CARTESIA_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)\s*[=:]\s*["']?([A-Za-z0-9._\-]{16,})'''
+regex = '''(?i)(?:VAPI_API_KEY|ELEVENLABS_API_KEY|DEEPGRAM_API_KEY|CARTESIA_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)[ \t]*[=:][ \t]*["']?([A-Za-z0-9._\-]{16,})'''
 secretGroup = 1
 keywords = ["vapi_api_key", "elevenlabs_api_key", "deepgram_api_key", "cartesia_api_key", "anthropic_api_key", "openai_api_key"]
 entropy = 3.0
@@ -48,7 +48,7 @@ entropy = 3.0
 [[rules]]
 id = "tworing-integration-secrets"
 description = "Stripe / Jobber / Google integration secret assigned a literal value"
-regex = '''(?i)(?:STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|JOBBER_CLIENT_SECRET|GOOGLE_CLIENT_SECRET|NEXTAUTH_SECRET|INGEST_KEY)\s*[=:]\s*["']?([A-Za-z0-9._\-]{16,})'''
+regex = '''(?i)(?:STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|JOBBER_CLIENT_SECRET|GOOGLE_CLIENT_SECRET|NEXTAUTH_SECRET|INGEST_KEY)[ \t]*[=:][ \t]*["']?([A-Za-z0-9._\-]{16,})'''
 secretGroup = 1
 keywords = ["stripe_secret_key", "stripe_webhook_secret", "jobber_client_secret", "google_client_secret", "nextauth_secret", "ingest_key"]
 entropy = 3.0
@@ -57,7 +57,7 @@ entropy = 3.0
 id = "tworing-credential-literal"
 description = "Password or token assigned a literal high-entropy value"
 # Leading class omits $ ( { ` so `"$TOKEN"`, `"${X}"` and template literals miss.
-regex = '''(?i)(?:password|passwd|secret|api[_-]?key|token)\s*[=:]\s*["']([A-Za-z0-9!@#%^&*._\-][A-Za-z0-9!@#$%^&*._\-]{19,})["']'''
+regex = '''(?i)(?:password|passwd|secret|api[_-]?key|token)[ \t]*[=:][ \t]*["']([A-Za-z0-9!@#%^&*._\-][A-Za-z0-9!@#$%^&*._\-]{19,})["']'''
 secretGroup = 1
 keywords = ["password", "passwd", "secret", "api_key", "apikey", "token"]
 entropy = 3.5

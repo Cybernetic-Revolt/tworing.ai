@@ -1,46 +1,64 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
 # dependencies
-node_modules/
-.pnp
-.pnp.js
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
 
 # next.js
-.next/
-out/
-build/
-dist/
-next-env.d.ts
+/.next/
+/out/
 
-# secrets — the whole point. .env.example is the only env file that ships.
-.env
-.env.*
-!.env.example
+# production
+/build
+
+# misc
+.DS_Store
 *.pem
-*.key
-*.p12
-*.pfx
 
-# prisma local artifacts
-prisma/*.db
-prisma/*.db-journal
-
-# runtime data that belongs in S3, not git
-uploads/
-recordings/
-public/recordings/
-
-# logs / os / editor
-*.log
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.DS_Store
-Thumbs.db
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# prisma generated client (regenerated on install)
+/src/generated/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# --- added with the AWS move ---
+# Runtime data belongs in S3, never in the repo.
+uploads/
+recordings/
+public/recordings/
+# Additional key material beyond *.pem.
+*.key
+*.p12
+*.pfx
+# Local database artifacts.
+prisma/*.db
+prisma/*.db-journal
+# Amplify local build state.
+.amplify-hosting/
+# Editors / coverage.
 .vscode/
 .idea/
-
-# test + coverage
 coverage/
-.nyc_output/
-
-# amplify local
-.amplify-hosting/
