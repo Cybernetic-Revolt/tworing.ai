@@ -148,6 +148,59 @@ export type GcalEvent = {
   end: { dateTime: string; timeZone: string };
 };
 
+// Actual events in a window, not just busy blocks.
+//
+// `freeBusy` answers "is this slot taken", which is what booking needs. An assistant reading
+// someone their day needs the other question — what the thing at 2pm actually is — and that
+// only comes from the events endpoint. singleEvents expands recurring series so a weekly
+// stand-up appears on the day it occurs rather than as one rule.
+export type ListedEvent = {
+  id: string;
+  summary: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+  location?: string;
+};
+
+export async function listEvents(
+  accessToken: string,
+  calendarId: string,
+  timeMin: Date,
+  timeMax: Date,
+  max = 25,
+): Promise<ListedEvent[]> {
+  const q = new URLSearchParams({
+    timeMin: timeMin.toISOString(),
+    timeMax: timeMax.toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: String(max),
+  });
+  const data = await calApi<{
+    items?: {
+      id: string;
+      summary?: string;
+      location?: string;
+      status?: string;
+      start?: { dateTime?: string; date?: string };
+      end?: { dateTime?: string; date?: string };
+    }[];
+  }>(accessToken, `/calendars/${encodeURIComponent(calendarId)}/events?${q}`);
+
+  return (data.items ?? [])
+    .filter((e) => e.status !== "cancelled" && (e.start?.dateTime || e.start?.date))
+    .map((e) => ({
+      id: e.id,
+      // An untitled event is normal in Google and reads badly when spoken aloud.
+      summary: e.summary?.trim() || "(untitled)",
+      start: new Date(e.start!.dateTime ?? `${e.start!.date}T00:00:00Z`),
+      end: new Date(e.end?.dateTime ?? `${e.end?.date ?? e.start!.date}T00:00:00Z`),
+      allDay: !e.start!.dateTime,
+      location: e.location?.trim() || undefined,
+    }));
+}
+
 export async function insertEvent(
   accessToken: string,
   calendarId: string,

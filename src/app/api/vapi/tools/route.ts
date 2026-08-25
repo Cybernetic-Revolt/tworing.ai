@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { openSlots, validateSlot, getCalendarConfig } from "@/lib/availability";
 import { prisma } from "@/lib/db";
 import { addTask, captureNote, setReminder } from "@/lib/assistant-tools";
+import {
+  cancelCalendarEvent,
+  createCalendarEvent,
+  getCalendar,
+  updateCalendarEvent,
+} from "@/lib/assistant-calendar";
 import { pushAppointment } from "@/lib/google-sync";
 import { resolveTenantKey } from "@/lib/tenant-key";
 import { formatSlotLabel } from "@/lib/tz";
@@ -426,6 +432,14 @@ export async function POST(req: NextRequest) {
         result = await addTask(key.orgId, tz, args, vapiCallId);
       } else if (fnName === "set_reminder") {
         result = await setReminder(key.orgId, tz, args, vapiCallId);
+      } else if (fnName === "get_calendar") {
+        result = await getCalendar(key.orgId, tz, args);
+      } else if (fnName === "create_calendar_event") {
+        result = await createCalendarEvent(key.orgId, tz, args);
+      } else if (fnName === "update_calendar_event") {
+        result = await updateCalendarEvent(key.orgId, tz, args);
+      } else if (fnName === "cancel_calendar_event") {
+        result = await cancelCalendarEvent(key.orgId, tz, args);
       } else {
         // Spoken, so it has to be usable on a call: say what cannot be done and offer the
         // fallback, rather than reading a tool name at the caller.
