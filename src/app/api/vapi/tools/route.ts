@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openSlots, validateSlot, getCalendarConfig } from "@/lib/availability";
 import { prisma } from "@/lib/db";
+import { addTask, captureNote, setReminder } from "@/lib/assistant-tools";
 import { pushAppointment } from "@/lib/google-sync";
 import { resolveTenantKey } from "@/lib/tenant-key";
 import { formatSlotLabel } from "@/lib/tz";
@@ -415,8 +416,22 @@ export async function POST(req: NextRequest) {
         result = await rescheduleAppointment(key.orgId, tz, args, vapiCallId, callerNumber);
       } else if (fnName === "cancel_appointment") {
         result = await cancelAppointment(key.orgId, tz, args, callerNumber, vapiCallId);
+      // --- personal-assistant capture tools -------------------------------------------
+      // Ada's prompt has promised these since it was written, with nothing behind them. An
+      // assistant that says "got it, filed under Bilco" and writes nothing is worse than one
+      // that admits it cannot: the principal stops checking.
+      } else if (fnName === "capture_note") {
+        result = await captureNote(key.orgId, args, vapiCallId);
+      } else if (fnName === "add_task") {
+        result = await addTask(key.orgId, tz, args, vapiCallId);
+      } else if (fnName === "set_reminder") {
+        result = await setReminder(key.orgId, tz, args, vapiCallId);
       } else {
-        result = `Unknown tool: ${fnName}`;
+        // Spoken, so it has to be usable on a call: say what cannot be done and offer the
+        // fallback, rather than reading a tool name at the caller.
+        console.warn("unknown tool requested", fnName);
+        result =
+          "I can't do that one yet. Take a message with the details instead, and say it will be picked up.";
       }
     } catch (err) {
       console.error("tool call failed", fnName, err);

@@ -146,6 +146,8 @@ model Org {
   smsThreads        SmsThread[]
   subscription      Subscription?
   assistants        Assistant[]
+  tasks             Task[]
+  notes             Note[]
 }
 
 // Stripe subscription state, synced from webhooks. Drives tier entitlements
@@ -647,4 +649,59 @@ model AssistantContact {
   // is greeted depend on row order.
   @@unique([assistantId, e164])
   @@index([assistantId])
+}
+
+// A task or a reminder captured by an assistant.
+//
+// One model for both because they differ only in intent: a task is something to do, a
+// reminder is a task whose whole point is the time. Splitting them would duplicate every
+// query for no gain, and `kind` keeps the distinction the caller actually made.
+enum TaskKind {
+  TASK
+  REMINDER
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+model Task {
+  id      String     @id @default(cuid())
+  orgId   String
+  kind    TaskKind   @default(TASK)
+  title   String
+  project String? // free text: the assistant files against whatever the principal names
+  // Null for a task with no stated deadline. A REMINDER without one is a capture failure,
+  // not a valid row — the handler refuses it rather than storing a reminder that never fires.
+  dueAt  DateTime?
+  status TaskStatus @default(OPEN)
+
+  // The call this came from, so a captured item can be traced back to what was said.
+  sourceCallId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, status])
+  @@index([orgId, dueAt])
+}
+
+// Something the principal wanted kept. Deliberately unstructured: the value is in capturing
+// the substance verbatim, not in making someone fill in fields while talking.
+model Note {
+  id           String  @id @default(cuid())
+  orgId        String
+  text         String  @db.Text
+  project      String?
+  sourceCallId String?
+
+  createdAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
 }
