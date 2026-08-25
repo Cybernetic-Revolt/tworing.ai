@@ -40,31 +40,18 @@ jobs:
   build:
     name: typecheck + build
     runs-on: ubuntu-latest
+    # prisma.config.ts resolves DATABASE_URL at config-load time, and npm ci runs
+    # `prisma generate` via postinstall — so the variable must exist for EVERY step
+    # that touches npm, not just the build. A dummy URL is enough; generate and
+    # `next build` never connect to it.
+    env:
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
     steps:
       - uses: actions/checkout@v4
-      # The scaffold lands before the platform source does. Until package.json
-      # exists there is nothing to build, and a job that is red from day one
-      # trains everyone to ignore CI.
-      - id: src
-        run: |
-          if [ -f package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"
-          else echo "present=false" >> "$GITHUB_OUTPUT"
-               echo "::notice::No package.json yet — skipping build until the platform source is imported."
-          fi
       - uses: actions/setup-node@v4
-        if: steps.src.outputs.present == 'true'
         with:
           node-version: "22"
           cache: npm
-      - if: steps.src.outputs.present == 'true'
-        run: npm ci
-      # Prisma's client is generated, not committed — the build needs it first.
-      # A dummy URL is enough for `generate`; it never connects.
-      - if: steps.src.outputs.present == 'true'
-        run: npx prisma generate
-        env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/db
-      - if: steps.src.outputs.present == 'true'
-        run: npm run build
-        env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      # postinstall already runs `prisma generate`; no separate generate step.
+      - run: npm ci
+      - run: npm run build
