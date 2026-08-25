@@ -40,6 +40,15 @@ npx prisma migrate dev         # create schema
 npm run dev
 ```
 
+## Deployment
+
+Runs on a single **EC2 instance in `ca-west-1`** (Calgary — data residency is a selling
+point), behind the Cloudflare that already fronts the domain. Deploy is `git pull` + build +
+`systemctl restart` — see [`deploy.md`](deploy.md).
+
+Amplify Hosting and App Runner are **not available in `ca-west-1`**, which is why this is a
+plain instance rather than a managed deploy.
+
 ## Status / roadmap (Phase 1 of the v3 plan)
 
 - [x] Next.js scaffold (App Router, TS, Tailwind)
