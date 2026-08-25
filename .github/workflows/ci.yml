@@ -15,15 +15,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Full history: a secret added and then "removed" in a later commit is
+          # still in the history, and still leaked.
           fetch-depth: 0
-      # --log-opts="HEAD" scopes the scan to the pushed ref's history. Without it
-      # gitleaks walks every ref in the clone, so an unrelated branch's findings
-      # fail every unrelated PR.
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_CONFIG: .gitleaks.toml
-        with:
-          args: detect --redact --no-banner --log-opts="HEAD"
+
+      # Invoked directly rather than via gitleaks/gitleaks-action@v2. The action
+      # builds its own command line and DISCARDS any `args:` you pass — it ran
+      # `--log-opts=-1`, scanning a single commit, while reporting success. A
+      # scanner that silently narrows its own scope is worse than none, because
+      # the green check is what you end up trusting.
+      #
+      # --log-opts=HEAD scopes the scan to the ref under test. Without it gitleaks
+      # walks every ref the fetch-depth:0 checkout brought down, so a finding on any
+      # unmerged branch turns *every* push and PR red. The guard is not weakened:
+      # each branch is pushed and scanned on its own, so a secret still fails CI —
+      # on the branch that introduced it, which is the only branch that can fix it.
+      - name: Scan this ref's history for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git --redact --no-banner --config /repo/.gitleaks.toml \
+            --log-opts="HEAD" /repo
 
   build:
     name: typecheck + build
