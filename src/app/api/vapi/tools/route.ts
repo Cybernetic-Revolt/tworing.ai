@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { openSlots, validateSlot, getCalendarConfig } from "@/lib/availability";
 import { prisma } from "@/lib/db";
 import { addTask, captureNote, setReminder } from "@/lib/assistant-tools";
+import { NOT_PRINCIPAL, isPrincipal } from "@/lib/assistant-principal";
 import {
   cancelCalendarEvent,
   createCalendarEvent,
@@ -27,6 +28,14 @@ type ToolCall = {
   function?: { name?: string; arguments?: unknown };
   arguments?: unknown;
 };
+
+/** Tools that only the principal may invoke. Membership here is the access decision. */
+const CALENDAR_TOOLS = new Set([
+  "get_calendar",
+  "create_calendar_event",
+  "update_calendar_event",
+  "cancel_calendar_event",
+]);
 
 function parseArgs(raw: unknown): Record<string, unknown> {
   if (raw == null) return {};
@@ -432,14 +441,22 @@ export async function POST(req: NextRequest) {
         result = await addTask(key.orgId, tz, args, vapiCallId);
       } else if (fnName === "set_reminder") {
         result = await setReminder(key.orgId, tz, args, vapiCallId);
-      } else if (fnName === "get_calendar") {
-        result = await getCalendar(key.orgId, tz, args);
-      } else if (fnName === "create_calendar_event") {
-        result = await createCalendarEvent(key.orgId, tz, args);
-      } else if (fnName === "update_calendar_event") {
-        result = await updateCalendarEvent(key.orgId, tz, args);
-      } else if (fnName === "cancel_calendar_event") {
-        result = await cancelCalendarEvent(key.orgId, tz, args);
+      // --- principal-only: these read and write a real personal calendar ------------------
+      // Gated in code rather than by prompt instruction. A model told "never disclose his
+      // schedule" can be talked out of it; this cannot be, because the tool does not run.
+      } else if (CALENDAR_TOOLS.has(fnName)) {
+        if (!(await isPrincipal(key.orgId, callerNumber))) {
+          console.warn("calendar tool refused for non-principal caller", fnName);
+          result = NOT_PRINCIPAL;
+        } else if (fnName === "get_calendar") {
+          result = await getCalendar(key.orgId, tz, args);
+        } else if (fnName === "create_calendar_event") {
+          result = await createCalendarEvent(key.orgId, tz, args);
+        } else if (fnName === "update_calendar_event") {
+          result = await updateCalendarEvent(key.orgId, tz, args);
+        } else {
+          result = await cancelCalendarEvent(key.orgId, tz, args);
+        }
       } else {
         // Spoken, so it has to be usable on a call: say what cannot be done and offer the
         // fallback, rather than reading a tool name at the caller.
