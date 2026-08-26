@@ -39,9 +39,15 @@ export default async function AdminLayout({
               >
                 Assistants
               </Link>
-              <Link href="/app" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+              {/* Absolute: the portal lives on the public host, and admin is
+                  served from admin.tworing.ai. A relative /app here would be
+                  bounced straight back to /admin by the host-split middleware. */}
+              <a
+                href="https://tworing.ai/app"
+                className="hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
                 Portal
-              </Link>
+              </a>
             </nav>
           </div>
           <form action={logout}>
