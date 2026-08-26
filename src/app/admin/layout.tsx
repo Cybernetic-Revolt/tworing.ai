@@ -33,6 +33,12 @@ export default async function AdminLayout({
               <Link href="/admin" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                 Clients
               </Link>
+              <Link
+                href="/admin/assistants"
+                className="hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Assistants
+              </Link>
               <Link href="/app" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                 Portal
               </Link>
