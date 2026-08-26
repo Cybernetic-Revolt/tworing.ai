@@ -35,7 +35,7 @@ export async function staffLogin(formData: FormData): Promise<void> {
   // back-office access by trying addresses.
   const passwordOk =
     user?.passwordHash != null && (await bcrypt.compare(password, user.passwordHash));
-  if (!user || !passwordOk || !user.isEngineer) redirect("/admin/login?error=1");
+  if (!user || !passwordOk || !user.isEngineer) redirect("/staff/login?error=1");
 
   // Staff need no membership. orgId stays empty when they have none, and every back-office
   // page queries across organisations rather than through the session's tenant.

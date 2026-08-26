@@ -89,7 +89,9 @@ export async function requireSession(): Promise<Session> {
 
 export async function requireEngineer(): Promise<Session> {
   const session = await getSession();
-  if (!session) redirect("/login");
+  // Staff and customers have separate entrances. Sending an unauthenticated engineer to the
+  // customer login is how you end up with staff logged into a tenant's portal.
+  if (!session) redirect("/staff/login");
   if (!session.engineer) redirect("/app");
   return session;
 }
