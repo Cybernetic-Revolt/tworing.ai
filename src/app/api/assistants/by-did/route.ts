@@ -23,12 +23,14 @@ export async function GET(req: NextRequest) {
 
   const number = await prisma.phoneNumber.findUnique({
     where: { e164 },
-    include: { assistant: { include: { contacts: true } } },
+    include: { org: true, assistant: { include: { contacts: true } } },
   });
 
-  // Scoped to the calling tenant on purpose: without this, any valid key could read any
-  // org's prompt and contact list by guessing a number.
-  if (!number || number.orgId !== key.orgId) {
+  // A TENANT key is scoped to its own org: without this, any valid key could read any org's
+  // prompt and contact list by guessing a number. An ENGINE key is deliberately not scoped
+  // that way — it answers for every tenant, and the number it was handed is what decides
+  // which one, so the DID *is* the scoping.
+  if (!number || (key.scope !== "ENGINE" && number.orgId !== key.orgId)) {
     return NextResponse.json({ error: "no assistant for that number" }, { status: 404 });
   }
   const a = number.assistant;
@@ -55,8 +57,8 @@ export async function GET(req: NextRequest) {
     {
       key: a.key,
       org: number.orgId,
-      orgName: key.org.name,
-      timezone: key.org.timezone,
+      orgName: number.org.name,
+      timezone: number.org.timezone,
       greeting,
       systemPrompt: a.systemPrompt,
       voiceProvider: a.voiceProvider,

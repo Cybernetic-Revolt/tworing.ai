@@ -10,7 +10,7 @@ import {
   updateCalendarEvent,
 } from "@/lib/assistant-calendar";
 import { pushAppointment } from "@/lib/google-sync";
-import { resolveTenantKey } from "@/lib/tenant-key";
+import { resolveCallOrg, resolveTenantKey } from "@/lib/tenant-key";
 import { formatSlotLabel } from "@/lib/tz";
 import { fireWebhook } from "@/lib/webhook";
 import { pushLeadToJobber } from "@/lib/jobber-sync";
@@ -396,12 +396,30 @@ export async function POST(req: NextRequest) {
   const msg = (body.message ?? body) as Record<string, unknown> & {
     toolCallList?: ToolCall[];
     toolCalls?: ToolCall[];
-    call?: { id?: string; customer?: { number?: string } };
+    call?: {
+      id?: string;
+      customer?: { number?: string };
+      // The number that was *dialled*. For an ENGINE key this decides the tenant, so it is
+      // read from the payload but never trusted as an org claim — it is looked up.
+      phoneNumber?: { number?: string };
+    };
   };
   const vapiCallId = s(msg.call?.id);
   // The number the caller is dialing from — used to look up their existing
   // appointments without making them recite the number.
   const callerNumber = s(msg.call?.customer?.number);
+  const dialledNumber = normalizePhone(s(msg.call?.phoneNumber?.number));
+
+  // The engine answers for every client, so the org comes from the dialled number, not from
+  // the key. Resolved before any tool runs: a tool that writes to the wrong tenant has
+  // already done the damage by the time anyone notices.
+  const callOrg = await resolveCallOrg(key, dialledNumber);
+  if (!callOrg.ok) {
+    console.warn("tool call rejected", callOrg.error, { dialledNumber, scope: key.scope });
+    return NextResponse.json({ error: callOrg.error }, { status: callOrg.status });
+  }
+  const orgId = callOrg.orgId;
+
   const list: ToolCall[] = msg.toolCallList ?? msg.toolCalls ?? [];
 
   // Manual/diagnostic form: {"function": "...", "arguments": {...}}
@@ -412,7 +430,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no tool calls" }, { status: 400 });
   }
 
-  const tz = key.org.timezone;
+  const tz = callOrg.org.timezone;
   const results = [];
   for (const tc of list) {
     const fnName = tc.function?.name ?? tc.name ?? "";
@@ -420,42 +438,42 @@ export async function POST(req: NextRequest) {
     let result: string;
     try {
       if (fnName === "check_availability") {
-        result = await checkAvailability(key.orgId, tz, args);
+        result = await checkAvailability(orgId, tz, args);
       } else if (fnName === "book_appointment") {
-        result = await bookAppointment(key.orgId, tz, args, vapiCallId);
+        result = await bookAppointment(orgId, tz, args, vapiCallId);
       } else if (fnName === "take_message") {
-        result = await takeMessage(key.orgId, args, vapiCallId);
+        result = await takeMessage(orgId, args, vapiCallId);
       } else if (fnName === "find_appointments") {
-        result = await findAppointments(key.orgId, tz, args, callerNumber);
+        result = await findAppointments(orgId, tz, args, callerNumber);
       } else if (fnName === "reschedule_appointment") {
-        result = await rescheduleAppointment(key.orgId, tz, args, vapiCallId, callerNumber);
+        result = await rescheduleAppointment(orgId, tz, args, vapiCallId, callerNumber);
       } else if (fnName === "cancel_appointment") {
-        result = await cancelAppointment(key.orgId, tz, args, callerNumber, vapiCallId);
+        result = await cancelAppointment(orgId, tz, args, callerNumber, vapiCallId);
       // --- personal-assistant capture tools -------------------------------------------
       // Ada's prompt has promised these since it was written, with nothing behind them. An
       // assistant that says "got it, filed under Bilco" and writes nothing is worse than one
       // that admits it cannot: the principal stops checking.
       } else if (fnName === "capture_note") {
-        result = await captureNote(key.orgId, args, vapiCallId);
+        result = await captureNote(orgId, args, vapiCallId);
       } else if (fnName === "add_task") {
-        result = await addTask(key.orgId, tz, args, vapiCallId);
+        result = await addTask(orgId, tz, args, vapiCallId);
       } else if (fnName === "set_reminder") {
-        result = await setReminder(key.orgId, tz, args, vapiCallId);
+        result = await setReminder(orgId, tz, args, vapiCallId);
       // --- principal-only: these read and write a real personal calendar ------------------
       // Gated in code rather than by prompt instruction. A model told "never disclose his
       // schedule" can be talked out of it; this cannot be, because the tool does not run.
       } else if (CALENDAR_TOOLS.has(fnName)) {
-        if (!(await isPrincipal(key.orgId, callerNumber))) {
+        if (!(await isPrincipal(orgId, callerNumber))) {
           console.warn("calendar tool refused for non-principal caller", fnName);
           result = NOT_PRINCIPAL;
         } else if (fnName === "get_calendar") {
-          result = await getCalendar(key.orgId, tz, args);
+          result = await getCalendar(orgId, tz, args);
         } else if (fnName === "create_calendar_event") {
-          result = await createCalendarEvent(key.orgId, tz, args);
+          result = await createCalendarEvent(orgId, tz, args);
         } else if (fnName === "update_calendar_event") {
-          result = await updateCalendarEvent(key.orgId, tz, args);
+          result = await updateCalendarEvent(orgId, tz, args);
         } else {
-          result = await cancelCalendarEvent(key.orgId, tz, args);
+          result = await cancelCalendarEvent(orgId, tz, args);
         }
       } else {
         // Spoken, so it has to be usable on a call: say what cannot be done and offer the

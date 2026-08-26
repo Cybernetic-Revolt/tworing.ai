@@ -495,6 +495,14 @@ model GoogleConnection {
 
 // Per-tenant webhook auth: Vapi (or n8n forwarding) presents the raw key,
 // we store only its SHA-256 hash.
+enum IngestKeyScope {
+  /// Acts for exactly one org — its own. Vapi and n8n hold these.
+  TENANT
+  /// Acts for any org, but only by dialled number. The voice engine holds this: it is one
+  /// trusted service answering for every tenant, not a tenant itself.
+  ENGINE
+}
+
 model IngestKey {
   id         String    @id @default(cuid())
   orgId      String
@@ -502,6 +510,10 @@ model IngestKey {
   label      String
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
+
+  // Defaults to TENANT so an existing key can never widen its own reach by accident;
+  // granting ENGINE is a deliberate act.
+  scope IngestKeyScope @default(TENANT)
 
   org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
