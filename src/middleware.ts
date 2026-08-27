@@ -50,6 +50,17 @@ export function middleware(request: NextRequest) {
 
     if (isAdminSurface(pathname)) return NextResponse.next();
 
+    // Call recordings are read by the admin call view's <audio> element, so they must
+    // answer on this host too. They cannot simply point at tworing.ai: the session cookie
+    // is host-scoped on purpose (see above), so a cross-host request carries no session and
+    // the route correctly refuses it — which the browser shows as a play button that does
+    // nothing. Serving them per-host keeps the cookie with the request.
+    //
+    // This is not a hole in the split. The point of the split is keeping the marketing
+    // site, the customer portal and the telephony webhooks off this hostname; a
+    // session-authenticated read of a recording is admin surface in everything but name.
+    if (pathname.startsWith("/api/recordings/")) return NextResponse.next();
+
     // Logout is shared with the customer portal and sends everyone to /login.
     // On this host that is the wrong door — send staff back to their own.
     if (pathname === "/login") {
