@@ -33,11 +33,23 @@ function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : undefined;
 }
 
-// Only accept an https URL for the recording (it's third-party Vapi data that
-// gets loaded in the browser); reject javascript:/data:/http:/garbage.
-function httpsUrl(v: unknown): string | undefined {
+// The recording URL is rendered in a browser, so it is sanitised rather than trusted:
+// javascript:, data:, http: and garbage are all rejected.
+//
+// Two shapes are accepted. An absolute https URL is what Vapi sent and what historic rows
+// hold. A root-relative /api/recordings/ path is what switchboard sends, and it must be
+// relative: the portal answers on two hostnames and the session cookie is host-scoped, so
+// an absolute URL plays on one host and silently fails on the other.
+//
+// Rejecting relative paths here is what made every switchboard recording vanish from its
+// Call row while sitting complete in S3 — `new URL("/api/...")` throws without a base, so
+// the URL was dropped and the row saved without it. The upload had worked; nothing said so.
+function recordingUrl(v: unknown): string | undefined {
   const s = str(v);
   if (!s) return undefined;
+  // Same-origin path we generate ourselves. Anchored, and no protocol-relative "//host"
+  // which would be an off-site absolute URL wearing a relative disguise.
+  if (/^\/api\/recordings\/[A-Za-z0-9._-]{1,200}\.wav$/.test(s)) return s;
   try {
     const u = new URL(s);
     return u.protocol === "https:" ? u.toString() : undefined;
@@ -138,7 +150,7 @@ export async function POST(req: NextRequest) {
     durationSec,
     summary,
     transcript: str(msg.transcript),
-    recordingUrl: httpsUrl(msg.recordingUrl) ?? httpsUrl(msg.artifact?.recordingUrl),
+    recordingUrl: recordingUrl(msg.recordingUrl) ?? recordingUrl(msg.artifact?.recordingUrl),
     costUsd: msg.cost != null ? msg.cost : null,
     raw: JSON.parse(JSON.stringify(msg)),
   };
