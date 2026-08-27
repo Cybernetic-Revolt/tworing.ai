@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatDuration, formatWhen } from "@/lib/format";
 import { blockNumber } from "../../blocked/actions";
+import { deleteCall } from "../actions";
 
 const OUTCOME_STYLES: Record<string, string> = {
   BOOKED: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
@@ -155,6 +156,28 @@ export default async function CallDetailPage({
               </p>
             )}
           </section>
+
+          {(session.role === "OWNER" || session.role === "ADMIN") && (
+            <section className="rounded-xl border border-red-200 bg-white p-5 dark:border-red-900 dark:bg-zinc-950">
+              <h2 className="text-sm font-semibold text-red-700 dark:text-red-400">
+                Delete this call
+              </h2>
+              <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                Removes the transcript, summary and recording link permanently. Any
+                appointment booked on this call is kept — deleting the record does not
+                cancel the work.
+              </p>
+              <form action={deleteCall} className="mt-3">
+                <input type="hidden" name="id" value={call.id} />
+                <button
+                  type="submit"
+                  className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                >
+                  Delete call
+                </button>
+              </form>
+            </section>
+          )}
         </div>
       </div>
     </div>
