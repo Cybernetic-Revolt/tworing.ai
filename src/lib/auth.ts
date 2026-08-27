@@ -61,7 +61,12 @@ export async function getSession(): Promise<Session | null> {
   const userId = typeof payload.userId === "string" ? payload.userId : null;
   const orgId = typeof payload.orgId === "string" ? payload.orgId : null;
   const role = typeof payload.role === "string" ? payload.role : null;
-  if (!userId || !orgId || !role) return null;
+  // orgId is checked for ABSENCE, not for truthiness. Staff who belong to no organisation
+  // are minted with `orgId: ""` on purpose (see staff/login/actions.ts) — an empty string is
+  // a valid claim meaning "no tenant", and `!orgId` threw those sessions away one request
+  // after issuing them. The cookie was set, the next request discarded it, and the redirect
+  // back to /staff/login was indistinguishable from a wrong password.
+  if (!userId || orgId === null || !role) return null;
   // Tokens minted before sessionEpoch existed have no claim; treat as 0 so this
   // change does not force-log-out everyone on deploy.
   const tokenEpoch =
