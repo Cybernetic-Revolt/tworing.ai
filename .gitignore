@@ -47,7 +47,11 @@ next-env.d.ts
 # --- added with the AWS move ---
 # Runtime data belongs in S3, never in the repo.
 uploads/
-recordings/
+# Anchored to the repo root. Unanchored, this matched src/app/api/recordings/ and silently
+# excluded the route that serves call audio — `git add -A` skipped it without a word, the
+# commit and the local build both succeeded, and the deployed box simply never had the file.
+# A play button that did nothing was the only symptom.
+/recordings/
 public/recordings/
 # Additional key material beyond *.pem.
 *.key
