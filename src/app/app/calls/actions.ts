@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
+const RECORDINGS_BUCKET = process.env.RECORDINGS_BUCKET ?? "";
+
 /**
  * Deleting a call record.
  *
@@ -51,16 +53,26 @@ export async function deleteCall(form: FormData): Promise<void> {
     await tx.call.delete({ where: { id: call.id } });
   });
 
-  // The audio is deliberately NOT deleted here, and this is not an oversight: recordings
-  // live in S3 behind a lifecycle rule and nothing in this app can currently reach them.
-  // Removing the row while leaving the object would quietly orphan it past its retention,
-  // so this is recorded as a known gap rather than pretended away.
-  if (call.recordingUrl) {
-    console.warn(
-      "call %s deleted with a recording still in storage: %s",
-      call.id,
-      call.recordingUrl,
-    );
+  // Delete the audio too. The row going while the object stays would leave a recording
+  // nobody can reach and nobody can delete, sitting out its 180 days — the opposite of what
+  // someone asking to delete a call is asking for.
+  //
+  // Deliberately after the row is gone: if this fails, the lifecycle rule still expires the
+  // object, whereas a failure here blocking the delete would mean a customer cannot remove
+  // a call because a bucket was briefly unreachable.
+  const name = call.recordingUrl?.split("/").pop();
+  if (name && RECORDINGS_BUCKET && /^[A-Za-z0-9._-]{1,200}\.wav$/.test(name)) {
+    try {
+      const { S3Client, DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+      await new S3Client({}).send(
+        new DeleteObjectCommand({
+          Bucket: RECORDINGS_BUCKET,
+          Key: `recordings/${name}`,
+        }),
+      );
+    } catch (err) {
+      console.error("call %s deleted but its recording remains: %s", call.id, err);
+    }
   }
 
   revalidatePath("/app/calls");
