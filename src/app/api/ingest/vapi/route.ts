@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { resolveTenantKey } from "@/lib/tenant-key";
+import { resolveCallOrg, resolveTenantKey } from "@/lib/tenant-key";
 import { fireWebhook } from "@/lib/webhook";
 import { sendEmail } from "@/lib/email";
 import { leadSummaryEmail } from "@/lib/email-templates";
@@ -12,7 +12,13 @@ import { CallDisposition } from "@/generated/prisma/client";
 // Vapi server-message envelope; everything beyond what we model is kept in Call.raw
 type VapiMessage = {
   type?: string;
-  call?: { id?: string; customer?: { number?: string } };
+  call?: {
+    id?: string;
+    customer?: { number?: string };
+    // The number that was DIALLED. This is what decides the tenant for an engine-wide key,
+    // and it is read from the payload but never trusted as an org claim — it is looked up.
+    phoneNumber?: { number?: string };
+  };
   customer?: { number?: string };
   startedAt?: string;
   endedAt?: string;
@@ -85,6 +91,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing call.id" }, { status: 400 });
   }
 
+  // Which tenant this call belongs to is decided by the number that was DIALLED, not by the
+  // key that presented it. The tools endpoint was fixed this way in 41861fe; this one was
+  // not, and used orgId directly.
+  //
+  // Harmless while every switchboard number belongs to bilco, and a tenant-isolation bug the
+  // moment a client cuts over: one engine-wide key answers for every client, so every
+  // client's calls, transcripts, recordings and leads would have been filed under whichever
+  // org happens to own the key. Silently — a call would simply appear in the wrong portal.
+  //
+  // A TENANT key still resolves to its own org, so Vapi's existing traffic is unchanged; it
+  // now also gets a guard, since a tenant key presenting another org's number is a
+  // misconfiguration and guessing which half was right is how data lands in the wrong account.
+  const callOrg = await resolveCallOrg(ingestKey, normalizePhone(str(msg.call?.phoneNumber?.number)));
+  if (!callOrg.ok) {
+    console.warn("ingest rejected", callOrg.error, {
+      vapiCallId,
+      scope: ingestKey.scope,
+    });
+    return NextResponse.json({ error: callOrg.error }, { status: callOrg.status });
+  }
+  const orgId = callOrg.orgId;
+
   const startedAt = msg.startedAt ? new Date(msg.startedAt) : new Date();
   const endedAt = msg.endedAt ? new Date(msg.endedAt) : null;
   const durationSec =
@@ -103,7 +131,7 @@ export async function POST(req: NextRequest) {
   // not read as "booked" for either linking or the call outcome.
   const bookedAppt = await prisma.appointment.findFirst({
     where: {
-      orgId: ingestKey.orgId,
+      orgId: orgId,
       vapiCallId,
       callId: null,
       status: { in: ["CONFIRMED", "PENDING"] },
@@ -124,7 +152,7 @@ export async function POST(req: NextRequest) {
   // scoped to THIS org). Most significant action wins; reschedule/cancel must be
   // checked before the BOOK/bookedAppt fallback (a reschedule books a new slot).
   const actions = await prisma.callAction.findMany({
-    where: { orgId: ingestKey.orgId, vapiCallId },
+    where: { orgId: orgId, vapiCallId },
   });
   const kinds = new Set(actions.map((a) => a.kind));
   const disposition: CallDisposition = kinds.has("RESCHEDULE")
@@ -140,7 +168,7 @@ export async function POST(req: NextRequest) {
             : "INQUIRY";
 
   const callData = {
-    orgId: ingestKey.orgId,
+    orgId: orgId,
     callerNumber,
     status: "COMPLETED" as const,
     disposition,
@@ -163,7 +191,7 @@ export async function POST(req: NextRequest) {
 
   // Audit rows consumed — keep the table bounded to in-flight calls.
   void prisma.callAction
-    .deleteMany({ where: { orgId: ingestKey.orgId, vapiCallId } })
+    .deleteMany({ where: { orgId: orgId, vapiCallId } })
     .catch(() => {});
 
   const sd = msg.analysis?.structuredData ?? {};
@@ -175,11 +203,11 @@ export async function POST(req: NextRequest) {
   let lead =
     (phone
       ? await prisma.lead.findUnique({
-          where: { orgId_phone: { orgId: ingestKey.orgId, phone } },
+          where: { orgId_phone: { orgId: orgId, phone } },
         })
       : null) ??
     (await prisma.lead.findFirst({
-      where: { orgId: ingestKey.orgId, vapiCallId },
+      where: { orgId: orgId, vapiCallId },
       orderBy: { createdAt: "desc" },
     }));
 
@@ -206,7 +234,7 @@ export async function POST(req: NextRequest) {
     isNewLead = true;
     lead = await prisma.lead.create({
       data: {
-        orgId: ingestKey.orgId,
+        orgId: orgId,
         vapiCallId,
         phone,
         name: sdName,
@@ -220,14 +248,14 @@ export async function POST(req: NextRequest) {
     });
     await prisma.leadActivity.create({
       data: {
-        orgId: ingestKey.orgId,
+        orgId: orgId,
         leadId: lead.id,
         actor: "AI",
         kind: "STATUS_CHANGE",
         payload: { from: null, to: lead.status, note: "Captured from call" },
       },
     });
-    void fireWebhook(ingestKey.orgId, "lead.created", {
+    void fireWebhook(orgId, "lead.created", {
       id: lead.id,
       name: lead.name,
       phone: lead.phone,
@@ -254,7 +282,7 @@ export async function POST(req: NextRequest) {
     });
     await prisma.leadActivity.create({
       data: {
-        orgId: ingestKey.orgId,
+        orgId: orgId,
         leadId: lead.id,
         actor: "AI",
         kind: "APPOINTMENT",
@@ -275,7 +303,7 @@ export async function POST(req: NextRequest) {
     const leadForJobber = lead;
     void (async () => {
       if (isNewLead) {
-        await pushLeadToJobber(ingestKey.orgId, leadForJobber.id, {
+        await pushLeadToJobber(orgId, leadForJobber.id, {
           name: leadForJobber.name,
           phone: leadForJobber.phone,
           email: leadForJobber.email,
@@ -283,14 +311,14 @@ export async function POST(req: NextRequest) {
         });
       }
       if (bookedAppt) {
-        await pushBookingToJobber(ingestKey.orgId, bookedAppt.id);
+        await pushBookingToJobber(orgId, bookedAppt.id);
       }
     })().catch(() => {});
   }
 
   // Owner notification — the platform sends this directly (replaces the n8n
   // email node). Fire-and-forget; recorded in the Messages ledger.
-  const org = ingestKey.org;
+  const org = callOrg.org;
   if (org.notifyEmail) {
     const tpl = leadSummaryEmail({
       orgName: org.name,
