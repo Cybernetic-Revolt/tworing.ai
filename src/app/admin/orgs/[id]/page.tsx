@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireEngineer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatDuration, formatWhen } from "@/lib/format";
-import { addMember, addNumber, updateOrg } from "../../actions";
+import { addMember, addNumber, setNumberAssistant, updateOrg } from "../../actions";
 import { IssueKeyForm } from "./issue-key-form";
 import { CheckoutLinkForm } from "./checkout-link-form";
 
@@ -56,7 +56,7 @@ export default async function AdminOrgPage({
     where: { id },
     include: {
       members: { include: { user: true }, orderBy: { role: "asc" } },
-      phoneNumbers: true,
+      phoneNumbers: { include: { assistant: true } },
       ingestKeys: { orderBy: { createdAt: "desc" } },
       calls: { orderBy: { startedAt: "desc" }, take: 10 },
       subscription: true,
@@ -66,6 +66,11 @@ export default async function AdminOrgPage({
     },
   });
   if (!org) notFound();
+
+  const assistants = await prisma.assistant.findMany({
+    where: { orgId: id },
+    orderBy: { name: "asc" },
+  });
 
   // §6 onboarding wizard: compute readiness from the org's own data.
   const ownerWithLogin = org.members.find(
@@ -84,8 +89,8 @@ export default async function AdminOrgPage({
     },
     {
       label: "Assistant bound",
-      done: org.phoneNumbers.some((n) => n.vapiAssistantId),
-      hint: "Bind a Vapi assistant in the Engineering tab.",
+      done: org.phoneNumbers.some((n) => n.assistantId),
+      hint: "Assign an assistant to a phone number below.",
     },
     {
       label: "Ingest key issued",
@@ -292,7 +297,7 @@ export default async function AdminOrgPage({
                 <th className={thClass}>Number</th>
                 <th className={thClass}>Label</th>
                 <th className={thClass}>Provider</th>
-                <th className={thClass}>Vapi assistant</th>
+                <th className={thClass}>Assistant</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -301,8 +306,37 @@ export default async function AdminOrgPage({
                   <td className={tdClass}>{n.e164}</td>
                   <td className={tdClass}>{n.label ?? "—"}</td>
                   <td className={tdClass}>{n.provider}</td>
-                  <td className={`${tdClass} font-mono text-xs`}>
-                    {n.vapiAssistantId ?? "—"}
+                  <td className={tdClass}>
+                    <form action={setNumberAssistant} className="flex items-center gap-2">
+                      <input type="hidden" name="orgId" value={org.id} />
+                      <input type="hidden" name="numberId" value={n.id} />
+                      <select
+                        name="assistantId"
+                        defaultValue={n.assistantId ?? ""}
+                        className={`${inputClass} min-w-40`}
+                      >
+                        <option value="">— none —</option>
+                        {assistants.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                        {/* A bound assistant that is somehow not in this org's list must
+                            still be visible rather than silently appearing unassigned. */}
+                        {n.assistantId &&
+                          !assistants.some((a) => a.id === n.assistantId) && (
+                            <option value={n.assistantId}>
+                              {n.assistant?.name ?? n.assistantId} (unknown)
+                            </option>
+                          )}
+                      </select>
+                      <button
+                        type="submit"
+                        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                      >
+                        Save
+                      </button>
+                    </form>
                   </td>
                 </tr>
               ))}
@@ -324,6 +358,14 @@ export default async function AdminOrgPage({
             <option value="voipms">VoIP.ms</option>
             <option value="vapi">Vapi</option>
             <option value="external">External</option>
+          </select>
+          <select name="assistantId" defaultValue="" className={inputClass}>
+            <option value="">— no assistant yet —</option>
+            {assistants.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
           </select>
           <button
             type="submit"

@@ -109,12 +109,51 @@ export async function addNumber(formData: FormData): Promise<void> {
       : `+${digits}`;
   const label = String(formData.get("label") ?? "").trim() || null;
   const provider = String(formData.get("provider") ?? "").trim() || "voipms";
+  const assistantId = String(formData.get("assistantId") ?? "").trim() || null;
   if (e164.length < 8) redirect(`/admin/orgs/${orgId}?error=number`);
+  if (assistantId && !(await assistantInOrg(orgId, assistantId)))
+    redirect(`/admin/orgs/${orgId}?error=number`);
 
   const created = await prisma.phoneNumber
-    .create({ data: { orgId, e164, label, provider } })
+    .create({ data: { orgId, e164, label, provider, assistantId } })
     .catch(() => null);
   if (!created) redirect(`/admin/orgs/${orgId}?error=number`);
+  redirect(`/admin/orgs/${orgId}?saved=1`);
+}
+
+// An assistant id is only ever accepted when it belongs to this org. The engine resolves a
+// number's assistant by DID (not by the submitting form), so a cross-org bind would make one
+// client's callers reach another client's assistant — the exact wrong-tenant failure this
+// platform guards against everywhere else.
+async function assistantInOrg(orgId: string, assistantId: string): Promise<boolean> {
+  const a = await prisma.assistant.findUnique({
+    where: { id: assistantId },
+    select: { orgId: true },
+  });
+  return a?.orgId === orgId;
+}
+
+export async function setNumberAssistant(formData: FormData): Promise<void> {
+  await requireEngineer();
+  const orgId = String(formData.get("orgId") ?? "");
+  const numberId = String(formData.get("numberId") ?? "");
+  const assistantId = String(formData.get("assistantId") ?? "").trim() || null;
+  if (!numberId) redirect(`/admin/orgs/${orgId}?error=number`);
+
+  // The number must belong to this org, and the assistant (when set) too. Neither is taken
+  // on trust from the form.
+  const number = await prisma.phoneNumber.findUnique({
+    where: { id: numberId },
+    select: { orgId: true },
+  });
+  if (!number || number.orgId !== orgId) redirect(`/admin/orgs/${orgId}?error=number`);
+  if (assistantId && !(await assistantInOrg(orgId, assistantId)))
+    redirect(`/admin/orgs/${orgId}?error=number`);
+
+  await prisma.phoneNumber.update({
+    where: { id: numberId },
+    data: { assistantId },
+  });
   redirect(`/admin/orgs/${orgId}?saved=1`);
 }
 
