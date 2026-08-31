@@ -10,6 +10,7 @@ const ITEMS: NavItem[] = [
   { href: "/app/calls", label: "Calls" },
   { href: "/app/leads", label: "Leads" },
   { href: "/app/messages", label: "Messages" },
+  { href: "/app/captured", label: "Captured" },
   { href: "/app/calendar", label: "Calendar" },
   { href: "/app/reports", label: "Found Money" },
   // Account-area routes are grouped under a single Settings hub (see
