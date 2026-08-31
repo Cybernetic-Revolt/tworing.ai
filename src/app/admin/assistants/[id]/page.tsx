@@ -4,6 +4,8 @@ import { requireEngineer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { promisedButMissing, validateAssistant } from "@/lib/assistant-validation";
 import { addContact, deleteContact, saveAssistant } from "../actions";
+import { cartesiaVoices, elevenlabsVoices } from "@/lib/voices";
+import { VoicePicker } from "../voice-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +76,10 @@ export default async function AssistantPage({
     },
   });
   if (!a) notFound();
+
+  // Voice lists for the picker. Fetched server-side so the admin chooses from the account's
+  // real voices rather than pasting an id. Each degrades to a free-text fallback on failure.
+  const [elevenlabs, cartesia] = await Promise.all([elevenlabsVoices(), cartesiaVoices()]);
 
   // Problems with what is currently SAVED, so a config that cannot answer says so on open
   // rather than waiting for someone to press Save.
@@ -238,15 +244,25 @@ export default async function AssistantPage({
         </fieldset>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className={label}>
-            Voice ID
-            <span className={hint}>ElevenLabs. Never defaulted — someone has to choose.</span>
-            <input name="voiceId" defaultValue={a.voiceId ?? ""} className={input} />
-          </label>
-          <label className={label}>
-            Voice provider
-            <input name="voiceProvider" defaultValue={a.voiceProvider} className={input} />
-          </label>
+          <div className="sm:col-span-2">
+            <VoicePicker
+              providers={[
+                {
+                  id: "elevenlabs",
+                  label: "ElevenLabs",
+                  voices: elevenlabs.ok ? elevenlabs.voices : null,
+                },
+                {
+                  id: "cartesia",
+                  label: "Cartesia",
+                  voices: cartesia.ok ? cartesia.voices : null,
+                  note: "Config only for now — the voice engine builds ElevenLabs TTS but not Cartesia yet, so a Cartesia voice is stored but will not speak until that adapter ships.",
+                },
+              ]}
+              currentProvider={a.voiceProvider ?? "elevenlabs"}
+              currentVoiceId={a.voiceId}
+            />
+          </div>
           <label className={label}>
             End-call phrases
             <span className={hint}>
