@@ -28,10 +28,49 @@ type Appt = {
   googleEventId: string | null;
 };
 
+/**
+ * The connection to sync through, or null having recorded why.
+ *
+ * This used to return null silently for four different reasons, and "not configured",
+ * "sync switched off", "no calendar chosen" and "nothing to sync" were indistinguishable
+ * from the outside. bilco's org sat in exactly that state: OAuth connected, refresh token
+ * valid, availability configured — and no calendar ever selected, so every booking saved to
+ * the database, told the caller it was booked, and never reached Google. `lastError` read
+ * "(none)" throughout, because nothing had failed. Nothing had run.
+ *
+ * The reason is now written to `lastError`, which the settings page and the Engineer console
+ * already display. A configuration that cannot sync should look different from one with
+ * nothing to do.
+ */
 async function activeConnection(orgId: string) {
-  if (!googleConfigured()) return null;
+  if (!googleConfigured()) {
+    // Server-wide, not org-specific: no client id/secret in the environment. Not recorded
+    // against the org, because it is not the org's problem and would appear for every one.
+    console.warn("google sync skipped: GOOGLE_CLIENT_ID/SECRET not configured");
+    return null;
+  }
   const conn = await prisma.googleConnection.findUnique({ where: { orgId } });
-  if (!conn || !conn.syncEnabled || !conn.calendarId) return null;
+  if (!conn) return null; // Never connected. Nothing to report against.
+
+  const reason = !conn.syncEnabled
+    ? "Sync is switched off for this connection."
+    : !conn.calendarId
+      ? "Connected, but no calendar has been chosen — bookings are NOT reaching Google. " +
+        "Pick one under Hours & booking."
+      : null;
+
+  if (reason) {
+    // Only write when it changes, so a silent-but-broken connection does not rewrite the
+    // same row on every booking.
+    if (conn.lastError !== reason) {
+      await prisma.googleConnection
+        .update({ where: { orgId }, data: { lastError: reason } })
+        .catch(() => {});
+    }
+    console.warn("google sync skipped for %s: %s", orgId, reason);
+    return null;
+  }
+
   return conn;
 }
 
