@@ -49,9 +49,14 @@ export async function GET(req: NextRequest) {
   // The greeting the caller actually hears. The notice is appended here rather than stored
   // pre-joined so the legal wording stays reviewable on its own, and so editing a greeting
   // cannot silently drop it.
-  const greeting = a.recordsCall && a.recordingNotice
-    ? `${a.greeting.trim()} ${a.recordingNotice.trim()}`
-    : a.greeting;
+  // announceRecording is checked as well as recordsCall. An assistant may record without
+  // announcing it — a deliberate, per-assistant choice — and that is not the same as not
+  // recording. The engine's own guard relaxes only on the same explicit flag, so the two
+  // ends agree rather than one silently overriding the other.
+  const greeting =
+    a.recordsCall && a.announceRecording && a.recordingNotice
+      ? `${a.greeting.trim()} ${a.recordingNotice.trim()}`
+      : a.greeting;
 
   return NextResponse.json(
     {
@@ -73,6 +78,7 @@ export async function GET(req: NextRequest) {
       silenceTimeoutSeconds: a.silenceTimeoutSeconds,
       maxDurationSeconds: a.maxDurationSeconds,
       recordsCall: a.recordsCall,
+      announceRecording: a.announceRecording,
       // Numbers only, with how to treat them. The engine needs to recognise a caller; it has
       // no reason to know why someone is in the list.
       contacts: a.contacts.map((c) => ({ e164: c.e164, name: c.name, relation: c.relation })),

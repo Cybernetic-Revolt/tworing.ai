@@ -46,6 +46,7 @@ export type Draft = {
   systemPrompt: string;
   recordingNotice: string | null;
   recordsCall: boolean;
+  announceRecording: boolean;
   voiceId: string | null;
   endCallPhrases: string[];
   tools: string[];
@@ -67,7 +68,10 @@ export function validateAssistant(d: Draft): string[] {
     errors.push("No voice is chosen. Pick one before this assistant can answer a call.");
   }
 
-  if (d.recordsCall) {
+  // Only checked when the caller is actually told. Recording without announcing is a
+  // deliberate, per-assistant choice; a MISSING notice while announcing is still an error,
+  // which is why this keys off the explicit flag rather than off the notice being blank.
+  if (d.recordsCall && d.announceRecording) {
     const spoken = `${greeting} ${d.recordingNotice ?? ""}`;
     if (!RECORDING.test(spoken)) {
       errors.push(

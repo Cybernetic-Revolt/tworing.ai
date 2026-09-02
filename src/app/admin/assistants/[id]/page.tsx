@@ -89,6 +89,7 @@ export default async function AssistantPage({
     systemPrompt: a.systemPrompt,
     recordingNotice: a.recordingNotice,
     recordsCall: a.recordsCall,
+    announceRecording: a.announceRecording,
     voiceId: a.voiceId,
     endCallPhrases: a.endCallPhrases,
     tools: a.tools,
@@ -184,6 +185,20 @@ export default async function AssistantPage({
             <input type="checkbox" name="recordsCall" defaultChecked={a.recordsCall} />
             Record calls
           </label>
+          <label className="mt-2 flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+            <input
+              type="checkbox"
+              name="announceRecording"
+              defaultChecked={a.announceRecording}
+            />
+            Tell the caller it is recorded
+          </label>
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            Leave this on unless you have a specific reason. PIPEDA guidance is that a caller
+            must be told a commercial call is recorded, and told why. Turning it off records
+            them silently — that is a decision about legal exposure, not a preference, and it
+            is recorded per assistant so it cannot happen by accident.
+          </p>
           <label className={`${label} mt-3`}>
             Recording notice
             <span className={hint}>

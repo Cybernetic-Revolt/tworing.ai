@@ -593,6 +593,15 @@ model Assistant {
   recordingNotice String?
   recordsCall     Boolean @default(true)
 
+  // Whether the caller is TOLD the call is recorded. Separate from recordsCall on purpose:
+  // "we do not record" and "we record without saying so" are different decisions with very
+  // different consequences, and one field for both would let the second happen by accident.
+  //
+  // Defaults to true, and the engine only relaxes its notice guard when this is explicitly
+  // false — so a forgotten notice is still a config error. PIPEDA requires notice for
+  // commercial recording; turning this off is a deliberate, per-assistant, recorded choice.
+  announceRecording Boolean @default(true)
+
   // --- voice ---------------------------------------------------------------------------
   // Never defaulted. Vapi's voice ids ("Layla", "Elliot") exist on no other vendor, so a
   // default would put a stranger's speech in front of callers with nobody having chosen it.
