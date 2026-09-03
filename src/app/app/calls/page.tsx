@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatDuration, formatWhen } from "@/lib/format";
+import { cleanSummary, formatDuration, formatWhen } from "@/lib/format";
 import { CallDisposition, Prisma } from "@/generated/prisma/client";
 import { RecordingCell } from "./recording-cell";
 
@@ -165,7 +165,7 @@ export default async function CallLogPage({
                     )}
                   </td>
                   <td className="min-w-[18rem] max-w-md px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                    {call.summary ?? "—"}
+                    {cleanSummary(call.summary) ?? "—"}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     {call.recordingUrl ? (

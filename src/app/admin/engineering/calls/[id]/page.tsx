@@ -1,3 +1,4 @@
+import { cleanSummary } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireEngineer } from "@/lib/auth";
@@ -46,7 +47,7 @@ export default async function RawCallPage({ params }: { params: Promise<{ id: st
       {call.summary && (
         <section className="mt-6">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Summary</h2>
-          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{call.summary}</p>
+          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{cleanSummary(call.summary)}</p>
         </section>
       )}
 

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatDuration, formatWhen } from "@/lib/format";
+import { RecordingPlayer } from "../recording-player";
+import { cleanSummary, formatDuration, formatWhen } from "@/lib/format";
 import { blockNumber } from "../../blocked/actions";
 import { deleteCall } from "../actions";
 
@@ -101,7 +102,7 @@ export default async function CallDetailPage({
               Summary
             </h2>
             <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
-              {call.summary ?? "No summary."}
+              {cleanSummary(call.summary) ?? "No summary."}
             </p>
           </section>
           <section className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
@@ -120,7 +121,7 @@ export default async function CallDetailPage({
               <h2 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
                 Recording
               </h2>
-              <audio controls src={call.recordingUrl} className="mt-3 w-full" />
+              <RecordingPlayer src={call.recordingUrl} label="Call recording" />
             </section>
           )}
           <section className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 first:mt-0 dark:border-zinc-800 dark:bg-zinc-950">

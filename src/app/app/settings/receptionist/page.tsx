@@ -72,6 +72,12 @@ export default async function ReceptionistPage({
   const [elevenlabs, cartesia] = await Promise.all([elevenlabsVoices(), cartesiaVoices()]);
 
   const spokenName = assistant.botName?.trim() || assistant.name;
+  // Whether renaming does anything real. A script that never says #NAME# ignores this field
+  // entirely, and a settings page that quietly accepts a change it will never apply teaches
+  // the customer that settings here don't work. Say so instead.
+  const scriptUsesName = /#NAME#/.test(
+    `${assistant.greeting} ${assistant.systemPrompt} ${assistant.recordingNotice ?? ""}`,
+  );
   // Exactly what by-did will send the engine, built with the same function, so this preview
   // cannot drift from what a caller actually hears.
   const greeting = renderTemplate(
@@ -122,12 +128,19 @@ export default async function ReceptionistPage({
               <input
                 name="botName"
                 defaultValue={assistant.botName ?? ""}
-                placeholder={assistant.name}
+                placeholder="e.g. Jessica"
                 disabled={!canEdit}
                 maxLength={39}
                 className={input}
               />
-              <span className={hint}>Leave blank to keep the default.</span>
+              {scriptUsesName ? (
+                <span className={hint}>Leave blank to keep the default.</span>
+              ) : (
+                <span className="text-xs font-normal text-amber-700 dark:text-amber-400">
+                  Your current call script doesn&rsquo;t use this name yet, so changing it
+                  won&rsquo;t change what callers hear. Contact us and we&rsquo;ll wire it in.
+                </span>
+              )}
             </label>
           </div>
         </div>
@@ -156,6 +169,7 @@ export default async function ReceptionistPage({
               ]}
               currentProvider={assistant.voiceProvider ?? "elevenlabs"}
               currentVoiceId={assistant.voiceId}
+              disabled={!canEdit}
             />
           </div>
         </div>

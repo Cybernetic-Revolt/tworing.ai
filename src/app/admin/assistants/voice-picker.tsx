@@ -68,10 +68,14 @@ export function VoicePicker({
   providers,
   currentProvider,
   currentVoiceId,
+  disabled = false,
 }: {
   providers: Provider[];
   currentProvider: string;
   currentVoiceId: string | null;
+  /** Render-only mode for roles that cannot save — an interactive picker that silently
+   *  cannot persist teaches people the settings are broken. */
+  disabled?: boolean;
 }) {
   const [provider, setProvider] = useState(currentProvider);
   const [voiceId, setVoiceId] = useState(currentVoiceId ?? "");
@@ -141,6 +145,7 @@ export function VoicePicker({
             name="voiceProvider"
             value={provider}
             onChange={(e) => onProviderChange(e.target.value)}
+            disabled={disabled}
             className={input}
           >
             {providers.map((p) => (
@@ -165,6 +170,7 @@ export function VoicePicker({
               name="voiceId"
               value={voiceId}
               onChange={(e) => setVoiceId(e.target.value)}
+              disabled={disabled}
               className={input}
             >
               <option value="">— choose a voice —</option>
@@ -196,7 +202,7 @@ export function VoicePicker({
       {/* Filters are presentation only: they carry no `name`, so nothing here is submitted.
           Cartesia lists hundreds of voices and an unfiltered dropdown is not a choice anyone
           makes — they pick the first plausible name and move on. */}
-      {hasList && all.length > 8 && (
+      {hasList && !disabled && all.length > 8 && (
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
             Narrow by

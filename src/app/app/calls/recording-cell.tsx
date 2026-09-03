@@ -6,6 +6,16 @@ import { useState } from "react";
 // so a 200-row call log doesn't instantiate 200 media players at once.
 export function RecordingCell({ src, label }: { src: string; label: string }) {
   const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // Vapi-era recordings live on that provider's storage and on expired R2 presigned URLs.
+  // Without this, clicking Play on one produced a 0:00 player that silently did nothing.
+  if (failed) {
+    return (
+      <span className="text-xs text-zinc-400 dark:text-zinc-500" title="Stored with a previous provider; the link has expired.">
+        unavailable
+      </span>
+    );
+  }
   if (playing) {
     return (
       <audio
@@ -14,6 +24,7 @@ export function RecordingCell({ src, label }: { src: string; label: string }) {
         preload="none"
         src={src}
         aria-label={label}
+        onError={() => setFailed(true)}
         className="h-8 w-44"
       />
     );

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireEngineer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatDuration, formatWhen } from "@/lib/format";
+import { cleanSummary, formatDuration, formatWhen } from "@/lib/format";
 import { addMember, addNumber, setNumberAssistant, updateOrg } from "../../actions";
 import { IssueKeyForm } from "./issue-key-form";
 import { CheckoutLinkForm } from "./checkout-link-form";
@@ -450,7 +450,7 @@ export default async function AdminOrgPage({
                   </td>
                   <td className={tdClass}>{formatDuration(c.durationSec)}</td>
                   <td className={`${tdClass} max-w-md`}>
-                    <span className="line-clamp-2">{c.summary ?? "—"}</span>
+                    <span className="line-clamp-2">{cleanSummary(c.summary) ?? "—"}</span>
                   </td>
                 </tr>
               ))}
