@@ -583,6 +583,11 @@ model Assistant {
   status AssistantStatus @default(TEMPLATE)
 
   // --- what the caller hears, and what the model is told -------------------------------
+  /// The name the assistant says out loud — "Jessica". Distinct from `name`, which is the
+  /// label staff pick it out by in admin ("Jessica — reception + assistant"). Split because
+  /// the customer owns this one and staff own the other: the portal lets a client rename
+  /// their receptionist without handing them the prompt it appears in.
+  botName      String?
   greeting     String
   systemPrompt String @db.Text
 

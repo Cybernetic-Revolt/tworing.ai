@@ -4,10 +4,46 @@ import { requireEngineer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { promisedButMissing, validateAssistant } from "@/lib/assistant-validation";
 import { addContact, deleteContact, saveAssistant } from "../actions";
+import { TAGS } from "@/lib/assistant-template";
 import { cartesiaVoices, elevenlabsVoices } from "@/lib/voices";
 import { VoicePicker } from "../voice-picker";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * The tag vocabulary, shown where scripts are written.
+ *
+ * A tag nobody knows about is a tag nobody uses, and the script gets the client's name typed
+ * into it twenty times instead — which is the thing tags exist to stop.
+ */
+function TagLegend() {
+  return (
+    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
+      <p className="font-medium text-zinc-700 dark:text-zinc-300">
+        Tags you can use in the greeting, script and notice
+      </p>
+      <dl className="mt-2 space-y-1">
+        {TAGS.map((t) => (
+          <div key={t.tag} className="flex gap-2">
+            <dt className="shrink-0 font-mono text-emerald-700 dark:text-emerald-400">{t.tag}</dt>
+            <dd className="text-zinc-600 dark:text-zinc-400">
+              {t.description}
+              {t.customerEditable && (
+                <span className="ml-1 text-zinc-400 dark:text-zinc-500">
+                  (client-editable)
+                </span>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-zinc-500 dark:text-zinc-500">
+        Anything else between hashes is rejected on save — an unknown tag would be read out to
+        the caller verbatim.
+      </p>
+    </div>
+  );
+}
 
 const input =
   "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -94,6 +130,7 @@ export default async function AssistantPage({
     endCallPhrases: a.endCallPhrases,
     tools: a.tools,
     transferTo: a.transferTo,
+    hasPrincipalContact: a.contacts.some((c) => c.relation === "PRINCIPAL"),
   });
   const promised = promisedButMissing(a.systemPrompt, a.tools);
   let rejected: string[] = [];
@@ -162,7 +199,21 @@ export default async function AssistantPage({
         <div className="grid gap-4 sm:grid-cols-2">
           <label className={label}>
             Display name
+            <span className={hint}>The label staff pick this out by. Never spoken.</span>
             <input name="name" defaultValue={a.name} className={input} />
+          </label>
+          <label className={label}>
+            Spoken name
+            <span className={hint}>
+              What it calls itself on a call. This is what <code>#NAME#</code> becomes, and the
+              client can change it from their portal.
+            </span>
+            <input
+              name="botName"
+              defaultValue={a.botName ?? ""}
+              placeholder={a.name}
+              className={input}
+            />
           </label>
           <label className={label}>
             Status
@@ -173,6 +224,8 @@ export default async function AssistantPage({
             </select>
           </label>
         </div>
+
+        <TagLegend />
 
         <label className={label}>
           Greeting
@@ -271,7 +324,6 @@ export default async function AssistantPage({
                   id: "cartesia",
                   label: "Cartesia",
                   voices: cartesia.ok ? cartesia.voices : null,
-                  note: "Config only for now — the voice engine builds ElevenLabs TTS but not Cartesia yet, so a Cartesia voice is stored but will not speak until that adapter ships.",
                 },
               ]}
               currentProvider={a.voiceProvider ?? "elevenlabs"}

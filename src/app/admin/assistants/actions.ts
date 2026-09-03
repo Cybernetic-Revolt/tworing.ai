@@ -28,6 +28,15 @@ export async function saveAssistant(form: FormData): Promise<void> {
   if (!id) throw new Error("no assistant id");
 
   const tools = form.getAll("tools").map(String).filter(Boolean);
+
+  // #PRINCIPAL# only resolves to a name if one is recorded, so validation needs to know.
+  // Counted rather than trusted from the form: the contact list is edited by its own actions
+  // and a stale hidden field would let the check pass on a stale answer.
+  const hasPrincipalContact =
+    (await prisma.assistantContact.count({
+      where: { assistantId: id, relation: "PRINCIPAL" },
+    })) > 0;
+
   const draft = {
     key: String(form.get("key") ?? "").trim(),
     greeting: String(form.get("greeting") ?? ""),
@@ -39,6 +48,7 @@ export async function saveAssistant(form: FormData): Promise<void> {
     endCallPhrases: lines(String(form.get("endCallPhrases") ?? "")),
     tools,
     transferTo: String(form.get("transferTo") ?? "").trim() || null,
+    hasPrincipalContact,
   };
 
   // Refuse rather than save-and-warn. A saved config is one that can answer a call, and
@@ -60,6 +70,7 @@ export async function saveAssistant(form: FormData): Promise<void> {
     where: { id },
     data: {
       name: String(form.get("name") ?? "").trim() || draft.key,
+      botName: String(form.get("botName") ?? "").trim() || null,
       status: pick(STATUSES, String(form.get("status") ?? ""), "TEMPLATE"),
       greeting: draft.greeting.trim(),
       systemPrompt: draft.systemPrompt,

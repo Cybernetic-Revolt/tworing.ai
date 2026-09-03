@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
+import { renderTemplate, type TemplateValues } from "@/lib/assistant-template";
 import { resolveTenantKey } from "@/lib/tenant-key";
 
 export async function GET(req: NextRequest) {
@@ -46,6 +47,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "assistant is retired" }, { status: 409 });
   }
 
+  // Tags become text here, at the one seam where config leaves the platform, so the engine
+  // receives finished strings and never learns the vocabulary. Doing it further down would
+  // repeat the `{{customer.number}}` mistake — a placeholder the sender assumed someone else
+  // would resolve, silently spoken to callers for months because nothing raised.
+  const values: TemplateValues = {
+    // The admin label is the fallback rather than a blank: an assistant configured before
+    // botName existed still has to say something when its script says #NAME#.
+    name: a.botName?.trim() || a.name,
+    business: number.org.name,
+    principal: a.contacts.find((c) => c.relation === "PRINCIPAL")?.name ?? null,
+  };
+  const render = (text: string) => renderTemplate(text, values);
+
   // The greeting the caller actually hears. The notice is appended here rather than stored
   // pre-joined so the legal wording stays reviewable on its own, and so editing a greeting
   // cannot silently drop it.
@@ -53,10 +67,11 @@ export async function GET(req: NextRequest) {
   // announcing it — a deliberate, per-assistant choice — and that is not the same as not
   // recording. The engine's own guard relaxes only on the same explicit flag, so the two
   // ends agree rather than one silently overriding the other.
-  const greeting =
+  const greeting = render(
     a.recordsCall && a.announceRecording && a.recordingNotice
       ? `${a.greeting.trim()} ${a.recordingNotice.trim()}`
-      : a.greeting;
+      : a.greeting,
+  );
 
   return NextResponse.json(
     {
@@ -65,14 +80,14 @@ export async function GET(req: NextRequest) {
       orgName: number.org.name,
       timezone: number.org.timezone,
       greeting,
-      systemPrompt: a.systemPrompt,
+      systemPrompt: render(a.systemPrompt),
       voiceProvider: a.voiceProvider,
       voiceId: a.voiceId,
       tools: a.tools,
       endCallPhrases: a.endCallPhrases,
-      endCallMessage: a.endCallMessage,
+      endCallMessage: a.endCallMessage && render(a.endCallMessage),
       transferTo: a.transferTo,
-      transferMessage: a.transferMessage,
+      transferMessage: a.transferMessage && render(a.transferMessage),
       // Null stays null: no limit set is not the same as the default, and the engine
       // distinguishes them.
       silenceTimeoutSeconds: a.silenceTimeoutSeconds,

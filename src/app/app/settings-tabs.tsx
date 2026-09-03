@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 // daily-use views.
 const TABS = [
   { href: "/app/settings", label: "Business" },
+  { href: "/app/settings/receptionist", label: "Receptionist" },
   { href: "/app/team", label: "Team" },
   { href: "/app/connections", label: "Connections" },
   { href: "/app/account", label: "Account" },
@@ -15,6 +16,13 @@ const TABS = [
 
 export function SettingsTabs() {
   const pathname = usePathname();
+
+  // The most specific matching tab, not every matching one. "/app/settings/receptionist"
+  // is a prefix match for "/app/settings" as well as itself, and highlighting both makes the
+  // bar stop telling you where you are.
+  const current = TABS.map((t) => t.href)
+    .filter((href) => pathname === href || pathname.startsWith(href + "/"))
+    .sort((a, b) => b.length - a.length)[0];
 
   return (
     <div className="mb-6">
@@ -26,7 +34,7 @@ export function SettingsTabs() {
         className="mt-2 flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800"
       >
         {TABS.map((t) => {
-          const active = pathname === t.href || pathname.startsWith(t.href + "/");
+          const active = t.href === current;
           return (
             <Link
               key={t.href}

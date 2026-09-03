@@ -12,6 +12,8 @@
  */
 
 /** Tools that let an agent genuinely put something in a calendar. */
+import { TAGS, unknownTags } from "@/lib/assistant-template";
+
 export const BOOKING_TOOLS = [
   "book_appointment",
   "check_availability",
@@ -51,6 +53,8 @@ export type Draft = {
   endCallPhrases: string[];
   tools: string[];
   transferTo: string | null;
+  /** Whether a PRINCIPAL contact exists, which is what makes `#PRINCIPAL#` resolvable. */
+  hasPrincipalContact: boolean;
 };
 
 /** Every problem with a draft, so the form can show them all at once. */
@@ -111,6 +115,33 @@ export function validateAssistant(d: Draft): string[] {
       'This agent can book, so the prompt needs an explicit instruction like "you MUST call ' +
         'create_calendar_event before telling anyone it is booked". Without it the model ' +
         "discusses booking and often never calls the tool.",
+    );
+  }
+
+  // A tag that is not in the vocabulary is never substituted, so it reaches the caller as
+  // the literal text "#CLIENT#". That is precisely how `{{customer.number}}` survived in a
+  // live prompt for months: an unresolved placeholder raises nothing, it just becomes
+  // nonsense the model reads. Refused at save time, where the person who typed it is looking.
+  for (const [field, text] of [
+    ["greeting", greeting],
+    ["prompt", prompt],
+    ["recording notice", d.recordingNotice ?? ""],
+  ] as const) {
+    const unknown = unknownTags(text);
+    if (unknown.length) {
+      errors.push(
+        `The ${field} uses ${unknown.join(", ")}, which is not a tag the system replaces — ` +
+          `a caller would hear it read out. Valid tags: ${TAGS.map((t) => t.tag).join(", ")}.`,
+      );
+    }
+  }
+
+  // #PRINCIPAL# with nobody marked PRINCIPAL renders as "the owner". That is a deliberate
+  // fallback for a contact deleted later, not a substitute for never adding one.
+  if (/#PRINCIPAL#/.test(`${greeting} ${prompt}`) && !d.hasPrincipalContact) {
+    errors.push(
+      "The script uses #PRINCIPAL# but no contact is marked PRINCIPAL, so it would say " +
+        '"the owner" instead of a name. Add the principal contact below.',
     );
   }
 
