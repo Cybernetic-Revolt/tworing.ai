@@ -23,6 +23,22 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Server Actions run behind a Cloudflare Tunnel whose origin service is
+  // http://127.0.0.1:3000, so the Host header Next sees on the action POST does not
+  // always match the public Origin (tworing.ai). Next's built-in Server-Action CSRF
+  // guard then rejects the action and falls back to re-rendering the page — and that
+  // fallback render carries no session cookie, so requireSession() bounces the user to
+  // /login. The visible symptom was every settings save logging the user out.
+  //
+  // Declaring the real public origins here tells the guard those Origins are trusted
+  // regardless of the proxied Host, which is exactly what allowedOrigins is for. This is
+  // NOT a loosening of CSRF: only these exact hosts are allowed, and the tunnel already
+  // terminates at a single origin we control.
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["tworing.ai", "www.tworing.ai", "admin.tworing.ai", "aws.tworing.ai"],
+    },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
