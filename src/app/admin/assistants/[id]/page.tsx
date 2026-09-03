@@ -97,7 +97,7 @@ export default async function AssistantPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ errors?: string; saved?: string }>;
+  searchParams: Promise<{ errors?: string; saved?: string; contactError?: string }>;
 }) {
   await requireEngineer();
   const { id } = await params;
@@ -130,7 +130,10 @@ export default async function AssistantPage({
     endCallPhrases: a.endCallPhrases,
     tools: a.tools,
     transferTo: a.transferTo,
+    endCallMessage: a.endCallMessage,
+    transferMessage: a.transferMessage,
     hasPrincipalContact: a.contacts.some((c) => c.relation === "PRINCIPAL"),
+    status: a.status,
   });
   const promised = promisedButMissing(a.systemPrompt, a.tools);
   let rejected: string[] = [];
@@ -393,6 +396,11 @@ export default async function AssistantPage({
 
       <section id="contacts" className="mt-10">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Known people</h2>
+        {sp.contactError && (
+          <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            That contact wasn&rsquo;t added — a name and a valid phone number are both required.
+          </p>
+        )}
         <p className="mt-1 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
           Numbers the assistant recognises. This is data, not prose in the prompt — a
           &ldquo;known people&rdquo; paragraph with placeholders in it cannot identify anyone,

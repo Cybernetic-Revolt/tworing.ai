@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatWhen } from "@/lib/format";
+import { formatMessageMeta, formatWhen } from "@/lib/format";
 
 export const metadata = { title: "Sent log — TwoRing" };
 
@@ -62,7 +62,7 @@ export default async function MessageLogPage({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                      {m.channel} · {m.direction}
+                      {formatMessageMeta(m.channel, m.direction)}
                     </span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[m.status] ?? ""}`}

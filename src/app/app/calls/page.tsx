@@ -110,7 +110,52 @@ export default async function CallLogPage({
             : `No ${LABELS[active].toLowerCase()} calls.`}
         </p>
       ) : (
-        <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <>
+        {/* Mobile: a card per call. The desktop table's six columns do not fit 390px — crammed
+            into a scroll container it showed 2.5 columns and hid the outcome, summary and Play
+            button off-canvas. On a phone each call is a stacked card instead. */}
+        <ul className="mt-4 space-y-2 sm:hidden">
+          {calls.map((call) => (
+            <li
+              key={call.id}
+              className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <Link
+                  href={`/app/calls/${call.id}`}
+                  className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
+                >
+                  {call.lead?.name ?? call.callerName ?? call.callerNumber ?? "Unknown"}
+                </Link>
+                {call.disposition && (
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${OUTCOME_STYLES[call.disposition]}`}
+                  >
+                    {LABELS[call.disposition]}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {formatWhen(call.startedAt, tz)} · {formatDuration(call.durationSec)}
+              </p>
+              {cleanSummary(call.summary) && (
+                <p className="mt-2 line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  {cleanSummary(call.summary)}
+                </p>
+              )}
+              {call.recordingUrl && (
+                <div className="mt-3">
+                  <RecordingCell
+                    src={call.recordingUrl}
+                    label={`Play recording of call with ${call.lead?.name ?? call.callerNumber ?? "caller"} on ${formatWhen(call.startedAt, tz)}`}
+                  />
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-4 hidden overflow-x-auto rounded-xl border border-zinc-200 bg-white sm:block dark:border-zinc-800 dark:bg-zinc-950">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
               <tr>
@@ -182,6 +227,7 @@ export default async function CallLogPage({
             </tbody>
           </table>
         </div>
+        </>
       )}
       {calls.length === 200 && (
         <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">

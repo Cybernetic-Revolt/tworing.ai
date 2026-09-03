@@ -53,8 +53,20 @@ export type Draft = {
   endCallPhrases: string[];
   tools: string[];
   transferTo: string | null;
+  /** Also rendered through the tag pipeline by `by-did`, so they must be tag-checked too. */
+  endCallMessage: string | null;
+  transferMessage: string | null;
   /** Whether a PRINCIPAL contact exists, which is what makes `#PRINCIPAL#` resolvable. */
   hasPrincipalContact: boolean;
+  /**
+   * The status this config is being saved AS. Call-readiness rules (greeting/prompt/voice
+   * present, tool-trigger wording) are only enforced for PRODUCTION — a TEMPLATE is a
+   * work-in-progress and must be renamable and saveable while still incomplete, which is the
+   * whole point of having a template state. The tag and consistency checks below apply to
+   * every status, because a malformed tag saved into a template is a trap that detonates the
+   * day it is promoted.
+   */
+  status: string;
 };
 
 /** Every problem with a draft, so the form can show them all at once. */
@@ -62,13 +74,19 @@ export function validateAssistant(d: Draft): string[] {
   const errors: string[] = [];
   const greeting = d.greeting.trim();
   const prompt = d.systemPrompt.trim();
+  // Only a PRODUCTION assistant is about to answer real calls, so only it must be complete.
+  // A TEMPLATE is allowed to be half-built — otherwise a freshly created assistant (which
+  // starts empty) could never be saved, renamed or retired without first being finished.
+  const live = d.status === "PRODUCTION";
 
-  if (!greeting) errors.push("The greeting is empty — this is the first thing a caller hears.");
-  if (!prompt) errors.push("The prompt is empty, so the agent has no instructions at all.");
+  if (live && !greeting)
+    errors.push("The greeting is empty — this is the first thing a caller hears.");
+  if (live && !prompt)
+    errors.push("The prompt is empty, so the agent has no instructions at all.");
 
   // A voice is a choice nobody has made until they make it. Defaulting one would put a
   // stranger's speech in front of this client's callers.
-  if (!d.voiceId?.trim()) {
+  if (live && !d.voiceId?.trim()) {
     errors.push("No voice is chosen. Pick one before this assistant can answer a call.");
   }
 
@@ -126,6 +144,11 @@ export function validateAssistant(d: Draft): string[] {
     ["greeting", greeting],
     ["prompt", prompt],
     ["recording notice", d.recordingNotice ?? ""],
+    // by-did renders these two through the same tag pipeline (route.ts), so an unknown tag
+    // here reaches the caller verbatim exactly as it would in the greeting. Scanning only the
+    // first three left this gap — the same shape as the {{customer.number}} bug.
+    ["end-call message", d.endCallMessage ?? ""],
+    ["transfer message", d.transferMessage ?? ""],
   ] as const) {
     const unknown = unknownTags(text);
     if (unknown.length) {
@@ -138,7 +161,8 @@ export function validateAssistant(d: Draft): string[] {
 
   // #PRINCIPAL# with nobody marked PRINCIPAL renders as "the owner". That is a deliberate
   // fallback for a contact deleted later, not a substitute for never adding one.
-  if (/#PRINCIPAL#/.test(`${greeting} ${prompt}`) && !d.hasPrincipalContact) {
+  const allTagged = `${greeting} ${prompt} ${d.recordingNotice ?? ""} ${d.endCallMessage ?? ""} ${d.transferMessage ?? ""}`;
+  if (/#PRINCIPAL#/.test(allTagged) && !d.hasPrincipalContact) {
     errors.push(
       "The script uses #PRINCIPAL# but no contact is marked PRINCIPAL, so it would say " +
         '"the owner" instead of a name. Add the principal contact below.',

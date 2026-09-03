@@ -35,11 +35,15 @@ export default async function LoginPage({
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           Sign in to your receptionist portal.
         </p>
-        {error && (
+        {error === "locked" ? (
+          <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            Too many attempts. Wait a few minutes and try again, or reset your password.
+          </p>
+        ) : error ? (
           <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             Invalid email or password.
           </p>
-        )}
+        ) : null}
         {reset && (
           <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             Password updated — sign in with your new password.

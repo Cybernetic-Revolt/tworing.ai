@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { RecordingPlayer } from "../recording-player";
-import { cleanSummary, formatDuration, formatWhen } from "@/lib/format";
+import { formatEndedReason, cleanSummary, formatDuration, formatWhen } from "@/lib/format";
 import { blockNumber } from "../../blocked/actions";
 import { deleteCall } from "../actions";
 
@@ -72,7 +72,7 @@ export default async function CallDetailPage({
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             {call.callerNumber ? `${call.callerNumber} · ` : ""}
             {formatWhen(call.startedAt, tz)} · {formatDuration(call.durationSec)}
-            {call.endedReason ? ` · ended: ${call.endedReason}` : ""}
+            {formatEndedReason(call.endedReason) ? ` · ${formatEndedReason(call.endedReason)}` : ""}
           </p>
         </div>
         {canEdit && call.callerNumber && !blocked && (

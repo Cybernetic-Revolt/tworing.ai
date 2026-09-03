@@ -16,7 +16,12 @@ const STATUS_STYLE: Record<string, string> = {
   RETIRED: "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
-export default async function AssistantsPage() {
+export default async function AssistantsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   await requireEngineer();
   const [assistants, orgs] = await Promise.all([
     prisma.assistant.findMany({
@@ -113,6 +118,12 @@ export default async function AssistantsPage() {
 
       <section className="mt-8">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">New assistant</h2>
+        {error && (
+          <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            Couldn&rsquo;t create the assistant — pick an organisation and enter a key (letters,
+            numbers and dashes).
+          </p>
+        )}
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           Starts as a template. Making it answer a real line is a separate, deliberate step.
         </p>

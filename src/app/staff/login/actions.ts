@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { createSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { checkAndCount, clear, clientIp } from "@/lib/rate-limit";
 
 /**
  * Sign in as platform staff.
@@ -23,6 +24,15 @@ export async function staffLogin(formData: FormData): Promise<void> {
     .toLowerCase();
   const password = String(formData.get("password") ?? "");
 
+  // Throttle before touching bcrypt. The staff door is the highest-value target in the
+  // product — a guessed staff password is engineer access to every tenant — so a locked key
+  // short-circuits the whole attempt. Keyed by IP and by the email being tried.
+  const now = Date.now();
+  const ip = await clientIp();
+  for (const key of [`staff-ip:${ip}`, `staff-user:${email}`]) {
+    if (email && !checkAndCount(key, now).ok) redirect("/staff/login?error=locked");
+  }
+
   const user = email
     ? await prisma.user.findUnique({
         where: { email },
@@ -36,6 +46,10 @@ export async function staffLogin(formData: FormData): Promise<void> {
   const passwordOk =
     user?.passwordHash != null && (await bcrypt.compare(password, user.passwordHash));
   if (!user || !passwordOk || !user.isEngineer) redirect("/staff/login?error=1");
+
+  // Success: forget this identity's failures so an earlier fat-finger streak is not held.
+  clear(`staff-ip:${ip}`);
+  clear(`staff-user:${email}`);
 
   // Staff need no membership. orgId stays empty when they have none, and every back-office
   // page queries across organisations rather than through the session's tenant.

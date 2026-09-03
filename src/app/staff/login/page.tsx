@@ -34,11 +34,15 @@ export default async function StaffLoginPage({
           .
         </p>
 
-        {error && (
+        {error === "locked" ? (
+          <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            Too many attempts. Wait a few minutes and try again.
+          </p>
+        ) : error ? (
           <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             That didn&rsquo;t work. Check the address and password.
           </p>
-        )}
+        ) : null}
 
         <form action={staffLogin} className="mt-6 flex flex-col gap-3">
           <label className="flex flex-col gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">

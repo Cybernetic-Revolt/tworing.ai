@@ -48,7 +48,10 @@ export async function saveAssistant(form: FormData): Promise<void> {
     endCallPhrases: lines(String(form.get("endCallPhrases") ?? "")),
     tools,
     transferTo: String(form.get("transferTo") ?? "").trim() || null,
+    endCallMessage: String(form.get("endCallMessage") ?? "").trim() || null,
+    transferMessage: String(form.get("transferMessage") ?? "").trim() || null,
     hasPrincipalContact,
+    status: pick(STATUSES, String(form.get("status") ?? ""), "TEMPLATE"),
   };
 
   // Refuse rather than save-and-warn. A saved config is one that can answer a call, and
