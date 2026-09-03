@@ -74,9 +74,13 @@ export function validateAssistant(d: Draft): string[] {
   const errors: string[] = [];
   const greeting = d.greeting.trim();
   const prompt = d.systemPrompt.trim();
-  // Only a PRODUCTION assistant is about to answer real calls, so only it must be complete.
-  // A TEMPLATE is allowed to be half-built — otherwise a freshly created assistant (which
-  // starts empty) could never be saved, renamed or retired without first being finished.
+  // Only a PRODUCTION assistant is about to answer real calls, so only it must be complete
+  // and internally consistent. A TEMPLATE is a work-in-progress that must stay saveable,
+  // renamable and retirable while half-built — otherwise a freshly created assistant (which
+  // starts empty) could never be saved at all. The ONE exception, enforced at every status
+  // below, is tag correctness: an unknown #TAG# or an unresolvable #PRINCIPAL# is a typo that
+  // would be SPOKEN as garbage the day the template goes live, so it is caught now rather
+  // than left as a landmine — that is the {{customer.number}} lesson.
   const live = d.status === "PRODUCTION";
 
   if (live && !greeting)
@@ -93,7 +97,7 @@ export function validateAssistant(d: Draft): string[] {
   // Only checked when the caller is actually told. Recording without announcing is a
   // deliberate, per-assistant choice; a MISSING notice while announcing is still an error,
   // which is why this keys off the explicit flag rather than off the notice being blank.
-  if (d.recordsCall && d.announceRecording) {
+  if (live && d.recordsCall && d.announceRecording) {
     const spoken = `${greeting} ${d.recordingNotice ?? ""}`;
     if (!RECORDING.test(spoken)) {
       errors.push(
@@ -113,7 +117,7 @@ export function validateAssistant(d: Draft): string[] {
   const collides = d.endCallPhrases
     .map((p) => p.trim())
     .filter((p) => p && lowerGreeting.includes(p.toLowerCase()));
-  if (collides.length) {
+  if (live && collides.length) {
     errors.push(
       `The greeting contains the end-call phrase ${collides.map((c) => `"${c}"`).join(", ")}, ` +
         "so the call would hang up as soon as the greeting finished.",
@@ -121,14 +125,14 @@ export function validateAssistant(d: Draft): string[] {
   }
 
   const books = d.tools.some((t) => (BOOKING_TOOLS as readonly string[]).includes(t));
-  if (BOOKING_INTENT.test(prompt) && !books) {
+  if (live && BOOKING_INTENT.test(prompt) && !books) {
     errors.push(
       "The prompt discusses booking but no booking tool is attached, so the agent would " +
         `talk about booking and silently never book. Attach one of ${BOOKING_TOOLS.join(", ")} ` +
         "or reword the prompt.",
     );
   }
-  if (books && !TOOL_TRIGGER.test(prompt)) {
+  if (live && books && !TOOL_TRIGGER.test(prompt)) {
     errors.push(
       'This agent can book, so the prompt needs an explicit instruction like "you MUST call ' +
         'create_calendar_event before telling anyone it is booked". Without it the model ' +
@@ -169,7 +173,7 @@ export function validateAssistant(d: Draft): string[] {
     );
   }
 
-  if (d.tools.includes("transferCall") && !d.transferTo?.trim()) {
+  if (live && d.tools.includes("transferCall") && !d.transferTo?.trim()) {
     errors.push(
       "transferCall is attached but no transfer number is set — a caller asking for a " +
         "human would be handed nowhere.",
