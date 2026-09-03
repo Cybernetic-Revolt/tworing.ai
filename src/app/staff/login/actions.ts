@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { createSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { checkAndCount, clear, clientIp } from "@/lib/rate-limit";
+import { checkAndCount, clear, clientIp, MAX_ATTEMPTS_ACCOUNT, MAX_IP } from "@/lib/rate-limit";
 
 /**
  * Sign in as platform staff.
@@ -29,8 +29,11 @@ export async function staffLogin(formData: FormData): Promise<void> {
   // short-circuits the whole attempt. Keyed by IP and by the email being tried.
   const now = Date.now();
   const ip = await clientIp();
-  for (const key of [`staff-ip:${ip}`, `staff-user:${email}`]) {
-    if (email && !checkAndCount(key, now).ok) redirect("/staff/login?error=locked");
+  for (const [key, max] of [
+    [`staff-ip:${ip}`, MAX_IP],
+    [`staff-user:${email}`, MAX_ATTEMPTS_ACCOUNT],
+  ] as const) {
+    if (email && !checkAndCount(key, now, max).ok) redirect("/staff/login?error=locked");
   }
 
   const user = email

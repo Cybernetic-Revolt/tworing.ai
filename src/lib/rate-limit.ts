@@ -23,7 +23,13 @@ import { headers } from "next/headers";
 type Bucket = { count: number; first: number; lockedUntil: number };
 
 const WINDOW_MS = 15 * 60 * 1000; // attempts are counted over a rolling 15 minutes
-const MAX_ATTEMPTS = 8; // failures allowed in the window before a lockout
+//: Per-account: a targeted account is protected tightly.
+export const MAX_ATTEMPTS_ACCOUNT = 8;
+//: Per-IP: an office or carrier NAT can put many legitimate users behind one address, so the
+//: IP ceiling is deliberately high — it exists to blunt broad credential stuffing from a
+//: single source, not to lock out a shared network after a handful of typos. The account key
+//: is the sharp instrument; this is the blunt backstop.
+export const MAX_IP = 50;
 const LOCKOUT_MS = 15 * 60 * 1000; // how long a tripped key stays locked
 
 const buckets = new Map<string, Bucket>();
@@ -59,7 +65,7 @@ export type RateVerdict = { ok: true } | { ok: false; retryAfterSec: number };
  *
  * `now` is a parameter so this is testable without a clock; callers pass `Date.now()`.
  */
-export function checkAndCount(key: string, now: number): RateVerdict {
+export function checkAndCount(key: string, now: number, max: number): RateVerdict {
   evictIfNeeded(now);
   const b = buckets.get(key);
 
@@ -72,7 +78,7 @@ export function checkAndCount(key: string, now: number): RateVerdict {
     return { ok: true };
   }
   b.count += 1;
-  if (b.count > MAX_ATTEMPTS) {
+  if (b.count > max) {
     b.lockedUntil = now + LOCKOUT_MS;
     return { ok: false, retryAfterSec: Math.ceil(LOCKOUT_MS / 1000) };
   }

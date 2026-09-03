@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { createSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { checkAndCount, clear, clientIp } from "@/lib/rate-limit";
+import { checkAndCount, clear, clientIp, MAX_ATTEMPTS_ACCOUNT, MAX_IP } from "@/lib/rate-limit";
 
 export async function login(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "")
@@ -15,8 +15,11 @@ export async function login(formData: FormData): Promise<void> {
   // Throttle credential stuffing before the bcrypt compare. Keyed by IP and by email.
   const now = Date.now();
   const ip = await clientIp();
-  for (const key of [`login-ip:${ip}`, `login-user:${email}`]) {
-    if (email && !checkAndCount(key, now).ok) redirect("/login?error=locked");
+  for (const [key, max] of [
+    [`login-ip:${ip}`, MAX_IP],
+    [`login-user:${email}`, MAX_ATTEMPTS_ACCOUNT],
+  ] as const) {
+    if (email && !checkAndCount(key, now, max).ok) redirect("/login?error=locked");
   }
 
   const user = email
