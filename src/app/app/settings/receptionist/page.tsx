@@ -14,6 +14,8 @@ const ERRORS: Record<string, string> = {
   provider: "That voice provider isn't one we support.",
   voice: "Pick a voice — your receptionist can't answer without one.",
   notfound: "We couldn't find that assistant on your account.",
+  nameRequired:
+    "Your receptionist introduces itself by name on every call, so it needs one — pick a name rather than leaving it blank.",
 };
 
 const label = "flex flex-col gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300";
@@ -134,7 +136,7 @@ export default async function ReceptionistPage({
                 className={input}
               />
               {scriptUsesName ? (
-                <span className={hint}>Leave blank to keep the default.</span>
+                <span className={hint}>Callers hear this name on every call.</span>
               ) : (
                 <span className="text-xs font-normal text-amber-700 dark:text-amber-400">
                   Your current call script doesn&rsquo;t use this name yet, so changing it

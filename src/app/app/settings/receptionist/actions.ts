@@ -45,6 +45,19 @@ export async function updateReceptionist(form: FormData): Promise<void> {
   if (botName && !NAME_OK.test(botName)) {
     redirect("/app/settings/receptionist?error=name");
   }
+  // A tagged script substitutes #NAME# with botName, falling back to the assistant's admin
+  // label — which is a staff-facing string like "Jessica — reception + assistant" or even
+  // the business name, never something a receptionist should call itself. So once a script
+  // uses the tag, the name field cannot be blanked: the fallback would be spoken to callers.
+  if (!botName) {
+    const a = await prisma.assistant.findUniqueOrThrow({
+      where: { id: assistant.id },
+      select: { greeting: true, systemPrompt: true, recordingNotice: true },
+    });
+    if (/#NAME#/.test(`${a.greeting} ${a.systemPrompt} ${a.recordingNotice ?? ""}`)) {
+      redirect("/app/settings/receptionist?error=nameRequired");
+    }
+  }
 
   const voiceProvider = String(form.get("voiceProvider") ?? "").trim().toLowerCase();
   const voiceId = String(form.get("voiceId") ?? "").trim();
