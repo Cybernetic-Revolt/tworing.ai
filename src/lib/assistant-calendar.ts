@@ -13,6 +13,7 @@
 import { accessTokenFromRefresh, deleteEvent, insertEvent, listEvents, patchEvent } from "@/lib/google";
 import { resolveWhen } from "@/lib/assistant-tools";
 import { prisma } from "@/lib/db";
+import { decryptSecret } from "@/lib/crypto";
 import { formatSlotLabel, formatTimeOnly } from "@/lib/tz";
 
 const DEFAULT_MINUTES = 30;
@@ -45,7 +46,11 @@ async function connect(orgId: string): Promise<Conn | string> {
   if (!conn) return "The calendar isn't connected yet. I can take a note instead.";
   if (!conn.syncEnabled) return "Calendar syncing is switched off right now. I can take a note instead.";
   try {
-    const accessToken = await accessTokenFromRefresh(conn.refreshToken);
+    // Decrypt first — the token is stored encrypted (OAuth callback encryptSecret's it) and
+    // every other consumer decrypts. Using it raw sent ciphertext to Google as a refresh
+    // token, so the personal-assistant calendar tools failed with invalid_grant on every real
+    // connection. This corrects that alongside the multi-calendar resolver rewrite.
+    const accessToken = await accessTokenFromRefresh(decryptSecret(conn.refreshToken));
     return { accessToken, calendarId: conn.calendars[0]?.googleId ?? "primary" };
   } catch {
     // Usually a revoked refresh token. Nothing the caller can do, so do not make them wait.

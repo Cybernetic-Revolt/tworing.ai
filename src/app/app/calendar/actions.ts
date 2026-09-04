@@ -111,10 +111,15 @@ export async function setAppointmentStatus(form: FormData): Promise<void> {
   if (!id || !allowed.includes(status as (typeof allowed)[number])) {
     redirect("/app/calendar");
   }
-  await prisma.appointment.updateMany({
+  // Scope the write to the org AND gate the side effects on it having matched. `pushAppointment`
+  // and `maybeSendReviewRequest` both load the appointment by id with no org filter, so acting
+  // on an unmatched id would let an admin cancel another org's Google events or text another
+  // org's customer. Zero rows updated => not this org's appointment => do nothing further.
+  const updated = await prisma.appointment.updateMany({
     where: { id, orgId: session.orgId },
     data: { status: status as (typeof allowed)[number] },
   });
+  if (updated.count === 0) redirect("/app/calendar");
   await pushAppointment(id!, status === "CANCELLED" ? "cancel" : "update");
   if (status === "COMPLETED") {
     await maybeSendReviewRequest(id!).catch(() => {});

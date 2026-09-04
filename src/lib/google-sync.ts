@@ -147,6 +147,48 @@ export function planOps(
   });
 }
 
+/** The side effects one op needs, injected so the executor can be tested without Google or a DB. */
+export type OpIO = {
+  insert: (googleId: string) => Promise<string>;
+  patch: (googleId: string, eventId: string) => Promise<void>;
+  del: (googleId: string, eventId: string) => Promise<void>;
+  track: (calendarRowId: string, eventId: string) => Promise<void>;
+  untrack: (calendarRowId: string) => Promise<void>;
+};
+
+/**
+ * Run one account's ops, isolating failure per calendar.
+ *
+ * Pulled out of `pushAppointment` so the isolation contract can be tested with fakes: a
+ * calendar that throws must NOT stop the others, and the account is marked failed only when
+ * EVERY op failed (a partial success still counts as synced, because the booking did reach
+ * some calendars). Returns what the caller records against the connection.
+ */
+export async function runOps(
+  ops: CalendarOp[],
+  io: OpIO,
+): Promise<{ anyOk: boolean; lastErr: unknown }> {
+  let anyOk = false;
+  let lastErr: unknown = null;
+  for (const op of ops) {
+    try {
+      if (op.kind === "delete") {
+        await io.del(op.googleId, op.eventId);
+        await io.untrack(op.calendarRowId);
+      } else if (op.kind === "patch") {
+        await io.patch(op.googleId, op.eventId);
+      } else if (op.kind === "insert") {
+        const eventId = await io.insert(op.googleId);
+        await io.track(op.calendarRowId, eventId);
+      }
+      anyOk = true; // a noop counts as ok — nothing was needed, nothing failed
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  return { anyOk, lastErr };
+}
+
 /**
  * Create, update, or cancel this appointment's event on every calendar the org syncs.
  *
@@ -193,37 +235,27 @@ export async function pushAppointment(
       action,
     );
 
-    let anyOk = false;
-    let lastErr: unknown = null;
-    for (const op of ops) {
-      try {
-        if (op.kind === "delete") {
-          await deleteEvent(at, op.googleId, op.eventId);
-          await prisma.appointmentGoogleEvent
-            .deleteMany({ where: { appointmentId: appt.id, calendarId: op.calendarRowId } })
-            .catch(() => {});
-        } else if (op.kind === "patch") {
-          await patchEvent(at, op.googleId, op.eventId, body);
-        } else if (op.kind === "insert") {
-          const eventId = await insertEvent(at, op.googleId, body);
-          // upsert (not create) so a retry after a partial failure does not violate the
-          // (appointmentId, calendarId) unique constraint.
-          await prisma.appointmentGoogleEvent.upsert({
-            where: {
-              appointmentId_calendarId: {
-                appointmentId: appt.id,
-                calendarId: op.calendarRowId,
-              },
-            },
-            create: { appointmentId: appt.id, calendarId: op.calendarRowId, eventId },
-            update: { eventId },
-          });
-        }
-        anyOk = true;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
+    const { anyOk, lastErr } = await runOps(ops, {
+      insert: (googleId) => insertEvent(at, googleId, body),
+      patch: (googleId, eventId) => patchEvent(at, googleId, eventId, body),
+      del: (googleId, eventId) => deleteEvent(at, googleId, eventId),
+      untrack: async (calendarRowId) => {
+        await prisma.appointmentGoogleEvent
+          .deleteMany({ where: { appointmentId: appt.id, calendarId: calendarRowId } })
+          .catch(() => {});
+      },
+      track: async (calendarRowId, eventId) => {
+        // upsert (not create) so a retry after a partial failure does not violate the
+        // (appointmentId, calendarId) unique constraint.
+        await prisma.appointmentGoogleEvent.upsert({
+          where: {
+            appointmentId_calendarId: { appointmentId: appt.id, calendarId: calendarRowId },
+          },
+          create: { appointmentId: appt.id, calendarId: calendarRowId, eventId },
+          update: { eventId },
+        });
+      },
+    });
 
     if (lastErr && !anyOk) await recordError(connection.id, lastErr);
     else if (anyOk) await markSynced(connection.id);

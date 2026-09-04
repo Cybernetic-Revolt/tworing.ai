@@ -94,17 +94,17 @@ export default async function ConnectionsPage({
           name="Google Calendar"
           blurb="Two-way sync — bookings appear in your calendar, and the AI never double-books over it."
           status={
-            google.some((c) => c.calendars.length > 0)
-              ? {
-                  label:
-                    google.length > 1
-                      ? `${google.length} accounts connected`
-                      : "Connected",
-                  ok: true,
-                }
-              : google.length > 0
-                ? { label: "No calendar chosen", ok: false }
-                : { label: "Not connected", ok: false }
+            google.length === 0
+              ? { label: "Not connected", ok: false }
+              : google.every((c) => c.calendars.length > 0)
+                ? {
+                    label:
+                      google.length > 1 ? `${google.length} accounts connected` : "Connected",
+                    ok: true,
+                  }
+                : // At least one account has no calendar chosen — connected but not fully
+                  // syncing, which the green "connected" state would hide.
+                  { label: "Finish setup — pick a calendar", ok: false }
           }
         >
           {canEdit && google.length === 0 && googleConfigured() && (

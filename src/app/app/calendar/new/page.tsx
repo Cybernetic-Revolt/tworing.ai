@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { createAppointment } from "../actions";
@@ -33,12 +34,12 @@ export default async function NewAppointmentPage({
           >
             Book it
           </button>
-          <a
+          <Link
             href="/app/calendar"
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
           >
             Cancel
-          </a>
+          </Link>
         </div>
       </form>
     </div>
