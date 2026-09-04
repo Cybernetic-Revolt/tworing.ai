@@ -65,7 +65,14 @@ export default async function CalendarSettingsPage({
         }
       }
       const selected = new Set(conn.calendars.map((c) => c.googleId));
-      return { conn, available, listError, selected };
+      // Show the UNION of what Google offers and what is already synced, so an already-chosen
+      // calendar can always be unticked even when the live list can't be fetched (a revoked or
+      // expired token). Without this a bad token hid the whole picker, stranding the calendars
+      // it had already selected with no way to remove them.
+      const byId = new Map(available.map((c) => [c.id, c.summary]));
+      for (const c of conn.calendars) if (!byId.has(c.googleId)) byId.set(c.googleId, c.summary ?? c.googleId);
+      const options = [...byId].map(([id, summary]) => ({ id, summary }));
+      return { conn, options, listError, selected };
     }),
   );
 
@@ -225,7 +232,7 @@ export default async function CalendarSettingsPage({
               receptionist treats a busy time on any of them as unavailable.
             </p>
 
-            {accounts.map(({ conn, available, listError, selected }) => (
+            {accounts.map(({ conn, options, listError, selected }) => (
               <div
                 key={conn.id}
                 className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
@@ -259,46 +266,44 @@ export default async function CalendarSettingsPage({
                   </p>
                 )}
 
-                {listError ? (
-                  <p className="mt-3 text-zinc-500 dark:text-zinc-400">
-                    Couldn&apos;t load this account&apos;s calendar list — use Reconnect above.
-                  </p>
-                ) : (
-                  <form action={setGoogleCalendars} className="mt-3 flex flex-col gap-2">
-                    <input type="hidden" name="connectionId" value={conn.id} />
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Calendars to sync
+                <form action={setGoogleCalendars} className="mt-3 flex flex-col gap-2">
+                  <input type="hidden" name="connectionId" value={conn.id} />
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Calendars to sync</p>
+                  {listError && (
+                    <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      Couldn&apos;t reach Google to load new calendars — Reconnect to add more.
+                      You can still untick the ones below.
                     </p>
-                    <div className="flex flex-col gap-1.5">
-                      {available.map((c) => (
-                        <label
-                          key={c.id}
-                          className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300"
-                        >
-                          <input
-                            type="checkbox"
-                            name={`cal:${c.id}`}
-                            defaultChecked={selected.has(c.id)}
-                            className="h-4 w-4 rounded border-zinc-300 accent-emerald-600 dark:border-zinc-700"
-                          />
-                          <input type="hidden" name={`summary:${c.id}`} value={c.summary} />
-                          {c.summary}
-                        </label>
-                      ))}
-                      {available.length === 0 && (
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          No calendars found on this account.
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="submit"
-                      className="mt-1 self-start rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-                    >
-                      Save calendars
-                    </button>
-                  </form>
-                )}
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    {options.map((c) => (
+                      <label
+                        key={c.id}
+                        className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300"
+                      >
+                        <input
+                          type="checkbox"
+                          name={`cal:${c.id}`}
+                          defaultChecked={selected.has(c.id)}
+                          className="h-4 w-4 rounded border-zinc-300 accent-emerald-600 dark:border-zinc-700"
+                        />
+                        <input type="hidden" name={`summary:${c.id}`} value={c.summary} />
+                        {c.summary}
+                      </label>
+                    ))}
+                    {options.length === 0 && (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        No calendars found on this account.
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    className="mt-1 self-start rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                  >
+                    Save calendars
+                  </button>
+                </form>
               </div>
             ))}
 
