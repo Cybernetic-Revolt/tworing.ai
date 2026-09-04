@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatWhen } from "@/lib/format";
@@ -56,7 +57,11 @@ export default async function ConnectionsPage({
 
   const [org, google, jobber, webhook] = await Promise.all([
     prisma.org.findUniqueOrThrow({ where: { id: session.orgId } }),
-    prisma.googleConnection.findUnique({ where: { orgId: session.orgId } }),
+    prisma.googleConnection.findMany({
+      where: { orgId: session.orgId },
+      include: { calendars: true },
+      orderBy: { createdAt: "asc" },
+    }),
     prisma.jobberConnection
       .findUnique({ where: { orgId: session.orgId } })
       .catch(() => null),
@@ -89,12 +94,20 @@ export default async function ConnectionsPage({
           name="Google Calendar"
           blurb="Two-way sync — bookings appear in your calendar, and the AI never double-books over it."
           status={
-            google?.calendarId
-              ? { label: "Connected", ok: true }
-              : { label: "Not connected", ok: false }
+            google.some((c) => c.calendars.length > 0)
+              ? {
+                  label:
+                    google.length > 1
+                      ? `${google.length} accounts connected`
+                      : "Connected",
+                  ok: true,
+                }
+              : google.length > 0
+                ? { label: "No calendar chosen", ok: false }
+                : { label: "Not connected", ok: false }
           }
         >
-          {canEdit && !google && googleConfigured() && (
+          {canEdit && google.length === 0 && googleConfigured() && (
             <a
               href="/api/google/oauth/start"
               className="inline-block rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
@@ -102,11 +115,18 @@ export default async function ConnectionsPage({
               Connect Google Calendar
             </a>
           )}
-          {google && (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              {google.email}
-              {google.calendarId ? "" : " — pick a calendar in Hours & booking"}
+          {google.map((c) => (
+            <p key={c.id} className="text-xs text-zinc-500 dark:text-zinc-400">
+              {c.email}
+              {c.calendars.length === 0
+                ? " — pick a calendar in Hours & booking"
+                : ` — ${c.calendars.length} calendar${c.calendars.length > 1 ? "s" : ""}`}
             </p>
+          ))}
+          {google.length > 0 && canEdit && (
+            <Link href="/app/calendar/settings" className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">
+              Manage calendars &amp; add another account →
+            </Link>
           )}
         </Row>
 

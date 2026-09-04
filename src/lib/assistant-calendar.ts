@@ -33,12 +33,20 @@ type Conn = { accessToken: string; calendarId: string };
  * as a normal outcome — it is the most likely one for an org that has never linked Google.
  */
 async function connect(orgId: string): Promise<Conn | string> {
-  const conn = await prisma.googleConnection.findUnique({ where: { orgId } });
+  // The personal assistant reads and writes ONE calendar — the principal's own. With
+  // multi-calendar sync an org can have several, so this picks the first connected account
+  // and its first chosen calendar (falling back to "primary"), rather than the single
+  // `calendarId` that no longer exists. Token handling is unchanged from before.
+  const conn = await prisma.googleConnection.findFirst({
+    where: { orgId },
+    include: { calendars: { orderBy: { createdAt: "asc" }, take: 1 } },
+    orderBy: { createdAt: "asc" },
+  });
   if (!conn) return "The calendar isn't connected yet. I can take a note instead.";
   if (!conn.syncEnabled) return "Calendar syncing is switched off right now. I can take a note instead.";
   try {
     const accessToken = await accessTokenFromRefresh(conn.refreshToken);
-    return { accessToken, calendarId: conn.calendarId ?? "primary" };
+    return { accessToken, calendarId: conn.calendars[0]?.googleId ?? "primary" };
   } catch {
     // Usually a revoked refresh token. Nothing the caller can do, so do not make them wait.
     return "I can't reach the calendar at the moment. I'll take a note instead.";

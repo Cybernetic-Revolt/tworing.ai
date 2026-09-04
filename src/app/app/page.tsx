@@ -80,8 +80,11 @@ export default async function DashboardPage() {
       ? prisma.availabilityRule.count({ where: { orgId: session.orgId } })
       : Promise.resolve(0),
     showOnboarding
-      ? prisma.googleConnection.findUnique({ where: { orgId: session.orgId } })
-      : Promise.resolve(null),
+      ? prisma.googleConnection.findMany({
+          where: { orgId: session.orgId },
+          include: { calendars: { take: 1 } },
+        })
+      : Promise.resolve([]),
     showOnboarding
       ? prisma.phoneNumber.findFirst({
           where: { orgId: session.orgId },
@@ -109,7 +112,7 @@ export default async function DashboardPage() {
       label: "Connect your calendar",
       help: "Sync Google Calendar so bookings appear instantly and never double-book.",
       href: "/app/connections",
-      done: !!google?.calendarId,
+      done: google.some((c) => c.calendars.length > 0),
     },
     {
       label: "Set your average job value",

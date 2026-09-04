@@ -31,7 +31,11 @@ export default async function EngineeringPage() {
       where: { orgId: session.orgId },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.googleConnection.findUnique({ where: { orgId: session.orgId } }),
+    prisma.googleConnection.findMany({
+      where: { orgId: session.orgId },
+      include: { calendars: true },
+      orderBy: { createdAt: "asc" },
+    }),
     prisma.call.findMany({
       where: { orgId: session.orgId },
       orderBy: { startedAt: "desc" },
@@ -179,17 +183,25 @@ export default async function EngineeringPage() {
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           {!googleConfigured()
             ? "Server credentials not installed (GOOGLE_CLIENT_ID/SECRET empty)."
-            : !gConn
+            : gConn.length === 0
               ? "Configured on the server; this org is not connected yet."
-              : `Connected as ${gConn.email} → ${gConn.calendarId ?? "(no calendar chosen)"} · last sync ${
-                  gConn.lastSyncAt ? formatWhen(gConn.lastSyncAt, tz) : "never"
-                }`}
+              : `${gConn.length} account${gConn.length > 1 ? "s" : ""} connected.`}
         </p>
-        {gConn?.lastError && (
-          <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-            Last error: {gConn.lastError}
-          </p>
-        )}
+        {gConn.map((c) => (
+          <div key={c.id} className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+            <p>
+              {c.email} → {c.calendars.length === 0
+                ? "(no calendar chosen)"
+                : c.calendars.map((cal) => cal.summary ?? cal.googleId).join(", ")}{" "}
+              · last sync {c.lastSyncAt ? formatWhen(c.lastSyncAt, tz) : "never"}
+            </p>
+            {c.lastError && (
+              <p className="mt-1 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                Last error: {c.lastError}
+              </p>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Ingest keys */}

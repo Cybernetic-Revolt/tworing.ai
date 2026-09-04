@@ -46,10 +46,13 @@ export async function GET(req: NextRequest): Promise<Response> {
   try {
     const { refreshToken, email } = await exchangeCode(code);
     const encrypted = encryptSecret(refreshToken);
+    // Keyed by (orgId, email): reconnecting the SAME Google account refreshes its token,
+    // while a DIFFERENT account adds a second connection rather than overwriting the first.
+    // Its calendars (GoogleCalendar rows) are preserved on reconnect — only the token moves.
     await prisma.googleConnection.upsert({
-      where: { orgId },
+      where: { orgId_email: { orgId, email } },
       create: { orgId, email, refreshToken: encrypted },
-      update: { email, refreshToken: encrypted, lastError: null },
+      update: { refreshToken: encrypted, lastError: null },
     });
     return back("google=connected");
   } catch (err) {

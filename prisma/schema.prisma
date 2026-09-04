@@ -138,7 +138,7 @@ model Org {
   appointments      Appointment[]
   availabilityRules AvailabilityRule[]
   calendarSettings  CalendarSettings?
-  googleConnection  GoogleConnection?
+  googleConnections GoogleConnection[]
   jobberConnection  JobberConnection?
   blockedNumbers    BlockedNumber[]
   webhook           OrgWebhook?
@@ -422,15 +422,18 @@ model Appointment {
   status        ApptStatus @default(CONFIRMED)
   source        ApptSource @default(PORTAL)
   notes         String?
+  /// Deprecated: superseded by `googleEvents` (multi-calendar). Kept nullable so the
+  /// migration is reversible and no historical id is lost; sync no longer reads or writes it.
   googleEventId String?
   // Jobber Request created for this booking (Client -> Request upgrade).
   jobberRequestId String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  org  Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  lead Lead? @relation(fields: [leadId], references: [id])
-  call Call? @relation(fields: [callId], references: [id])
+  org          Org                      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead?                    @relation(fields: [leadId], references: [id])
+  call         Call?                    @relation(fields: [callId], references: [id])
+  googleEvents AppointmentGoogleEvent[]
 
   @@index([orgId, startsAt])
   @@index([vapiCallId])
@@ -480,17 +483,65 @@ model CalendarSettings {
 // (TOKEN_ENCRYPTION_KEY); calendarId null until the org picks a target.
 model GoogleConnection {
   id           String    @id @default(cuid())
-  orgId        String    @unique
+  orgId        String
   email        String
   refreshToken String
-  calendarId   String?
+  // `calendarId` moved to GoogleCalendar: an account may now sync several calendars, so the
+  // single field became a one-to-many. Kept out of here entirely rather than left as a
+  // "primary" — every selected calendar is equal (write to all, busy from all).
   syncEnabled  Boolean   @default(true)
   lastSyncAt   DateTime?
   lastError    String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org       Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calendars GoogleCalendar[]
+
+  // Was `orgId @unique` (one Google account per org). Relaxed to allow several accounts;
+  // still deduped per account so reconnecting the same email updates rather than duplicates.
+  @@unique([orgId, email])
+  @@index([orgId])
+}
+
+/// One calendar an org has chosen to sync, inside one connected account. A booking is written
+/// to every row here across all of the org's connections, and availability is the union of
+/// their busy times.
+model GoogleCalendar {
+  id           String   @id @default(cuid())
+  connectionId String
+  /// The Google calendar id — "primary", or a calendar address. Not our id.
+  googleId     String
+  /// Display name, refreshed from the Google calendar list; may be null until first refresh.
+  summary      String?
+  createdAt    DateTime @default(now())
+
+  connection GoogleConnection         @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  events     AppointmentGoogleEvent[]
+
+  @@unique([connectionId, googleId])
+  @@index([connectionId])
+}
+
+/// The event a booking created on ONE calendar. An appointment fans out to one of these per
+/// synced calendar, so edits and cancellations can reach each event by its own id — the single
+/// `Appointment.googleEventId` could only ever track one calendar.
+model AppointmentGoogleEvent {
+  id            String   @id @default(cuid())
+  appointmentId String
+  /// FK to GoogleCalendar.id (our row), NOT the Google calendar id.
+  calendarId    String
+  /// The Google event id on that calendar.
+  eventId       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  appointment Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  calendar    GoogleCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, calendarId])
+  @@index([appointmentId])
+  @@index([calendarId])
 }
 
 // Per-tenant webhook auth: Vapi (or n8n forwarding) presents the raw key,

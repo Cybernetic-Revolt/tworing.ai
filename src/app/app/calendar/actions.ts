@@ -123,22 +123,78 @@ export async function setAppointmentStatus(form: FormData): Promise<void> {
   redirect(`/app/calendar/${id}`);
 }
 
-export async function setGoogleCalendar(form: FormData): Promise<void> {
+/**
+ * Confirm a Google connection belongs to the caller's org before touching it.
+ *
+ * The connection/calendar ids arrive from a form, so without this an OWNER of one org could
+ * disconnect or re-scope another org's calendar by posting its id. Every management action
+ * below resolves ownership through this first.
+ */
+async function ownedConnection(connectionId: string, orgId: string) {
+  return prisma.googleConnection.findFirst({ where: { id: connectionId, orgId } });
+}
+
+/**
+ * Set the exact set of calendars a connection syncs, from the multi-select on the settings
+ * page. Adds the newly-ticked ones and removes the unticked ones in a transaction, so the
+ * stored set always matches what the operator saw when they hit Save. Removing a calendar
+ * cascades its `AppointmentGoogleEvent` rows; the events already on that Google calendar are
+ * left in place (we stop tracking them rather than deleting someone's calendar history).
+ */
+export async function setGoogleCalendars(form: FormData): Promise<void> {
   const session = await requireEditor();
-  const calendarId = s(form.get("calendarId"));
-  if (!calendarId) redirect("/app/calendar/settings");
-  await prisma.googleConnection.updateMany({
-    where: { orgId: session.orgId },
-    data: { calendarId, syncEnabled: true, lastError: null },
-  });
+  const connectionId = s(form.get("connectionId"));
+  if (!connectionId) redirect("/app/calendar/settings");
+  const conn = await ownedConnection(connectionId!, session.orgId);
+  if (!conn) redirect("/app/calendar/settings");
+
+  // Each chosen calendar posts as "cal:<googleId>" plus a hidden "summary:<googleId>" so we
+  // can store a display name without a second round-trip to Google.
+  const chosen = new Map<string, string | null>();
+  for (const [k, v] of form.entries()) {
+    if (k.startsWith("cal:") && v === "on") {
+      const googleId = k.slice(4);
+      chosen.set(googleId, s(form.get(`summary:${googleId}`)) ?? null);
+    }
+  }
+
+  const existing = await prisma.googleCalendar.findMany({ where: { connectionId: conn!.id } });
+  const existingIds = new Set(existing.map((c) => c.googleId));
+  const toRemove = existing.filter((c) => !chosen.has(c.googleId)).map((c) => c.id);
+
+  await prisma.$transaction([
+    ...(toRemove.length
+      ? [prisma.googleCalendar.deleteMany({ where: { id: { in: toRemove } } })]
+      : []),
+    ...[...chosen.entries()].map(([googleId, summary]) =>
+      existingIds.has(googleId)
+        ? prisma.googleCalendar.updateMany({
+            where: { connectionId: conn!.id, googleId },
+            data: { summary },
+          })
+        : prisma.googleCalendar.create({
+            data: { connectionId: conn!.id, googleId, summary },
+          }),
+    ),
+    prisma.googleConnection.update({
+      where: { id: conn!.id },
+      data: { syncEnabled: true, lastError: null },
+    }),
+  ]);
+
   revalidatePath("/app/calendar/settings");
   redirect("/app/calendar/settings?google=saved");
 }
 
-export async function disconnectGoogle(): Promise<void> {
+/** Disconnect ONE Google account (not every account on the org). */
+export async function disconnectGoogleAccount(form: FormData): Promise<void> {
   const session = await requireEditor();
+  const connectionId = s(form.get("connectionId"));
+  if (!connectionId) redirect("/app/calendar/settings");
+  // deleteMany with the org in the WHERE is the ownership check and the delete in one — a
+  // foreign id simply matches nothing. Cascades its calendars and their appointment-event rows.
   await prisma.googleConnection.deleteMany({
-    where: { orgId: session.orgId },
+    where: { id: connectionId!, orgId: session.orgId },
   });
   revalidatePath("/app/calendar/settings");
   redirect("/app/calendar/settings?google=disconnected");
