@@ -125,7 +125,8 @@ export function PushControls({ publicKey }: { publicKey: string }) {
       )}
       {state.kind === "unsupported" && (
         <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-          This browser can&apos;t receive push notifications. Try Chrome, Edge, or Safari 16.4+.
+          This browser can&apos;t receive push notifications. Try Chrome or Edge, or Safari on a
+          recent iPhone or Mac.
         </p>
       )}
       {state.kind === "ios-not-installed" && (

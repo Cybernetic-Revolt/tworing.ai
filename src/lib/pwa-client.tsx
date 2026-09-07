@@ -65,7 +65,9 @@ export async function registerSubscription(sub: PushSubscription): Promise<void>
  * The subscription this browser should be using, given the key the server signs with today.
  *
  * - No subscription: returns null (nothing is created here without a tap — see PushControls).
- * - Subscription made with today's key: re-registered (a no-op update) and returned.
+ * - Subscription made with today's key: returned as is. It is NOT re-posted: the server row
+ *   was written when it was created, and re-posting on every page load would let whoever is
+ *   signed in on a shared browser claim the other person's device just by opening the app.
  * - Subscription made with a PREVIOUS key (a VAPID rotation): it can never deliver again, so
  *   it is dropped on both sides. Then, if the user already granted permission, a fresh one
  *   is created with the new key and registered — no tap needed, and nothing prompts. If
@@ -81,10 +83,7 @@ export async function ensureFreshSubscription(
   const key = urlBase64ToUint8Array(publicKey);
   const existing = await reg.pushManager.getSubscription();
   if (!existing) return null;
-  if (sameKey(existing.options.applicationServerKey, key)) {
-    await registerSubscription(existing).catch(() => {});
-    return existing;
-  }
+  if (sameKey(existing.options.applicationServerKey, key)) return existing;
   await post("/api/push/unsubscribe", { endpoint: existing.endpoint }).catch(() => {});
   await existing.unsubscribe().catch(() => {});
   if (Notification.permission !== "granted") return null;

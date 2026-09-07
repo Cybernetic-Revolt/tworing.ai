@@ -146,8 +146,9 @@ export default async function DashboardPage() {
 
       {showOnboarding && <OnboardingChecklist steps={onboardingSteps} />}
 
-      {/* Client-side: renders nothing when installed, dismissed, or uninstallable here. */}
-      <InstallNudge />
+      {/* Client-side: renders nothing when installed, dismissed, or uninstallable here. Not
+          on a demo org — the card promises notifications the shared demo login can't turn on. */}
+      {!org.isDemoOrg && <InstallNudge />}
 
       {/* Stat cards */}
       <div className="mt-6 grid gap-4 sm:grid-cols-3">

@@ -34,8 +34,9 @@ self.addEventListener("push", (event) => {
       icon: "/icons/icon-192.png",
       badge: "/icons/badge-96.png",
       tag: p.tag || undefined,
-      // A second push about the same call/booking replaces the first AND re-alerts.
-      renotify: !!p.tag,
+      // A second push about the same call/booking replaces the first card silently: the
+      // call-ended summary updating a "Booked:" card, or a webhook retry, must not buzz twice.
+      renotify: false,
       // The owner has to act on a pending booking — keep it on screen until they do.
       requireInteraction: p.kind === "pending",
       data: { url: p.url || "/app" },

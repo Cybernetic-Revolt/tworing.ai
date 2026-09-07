@@ -57,9 +57,8 @@ export const viewport: Viewport = {
   themeColor: "#18181b",
   width: "device-width",
   initialScale: 1,
-  // Installed apps on iOS render under the status bar; cover the notch area with our own
-  // background rather than leaving a white band.
-  viewportFit: "cover",
+  // No viewport-fit=cover: with the default status bar style iOS keeps the app below the
+  // status bar, and "cover" would need env(safe-area-inset-*) padding everywhere to be honest.
 };
 
 export default function RootLayout({
