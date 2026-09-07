@@ -77,12 +77,12 @@ export default async function LoginPage({
           <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
         </div>
 
-        <a
+        <Link
           href="/demo"
           className={`mt-6 block w-full rounded-md border border-zinc-300 px-4 py-2.5 text-center text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900 ${FOCUS}`}
         >
           View live demo
-        </a>
+        </Link>
         <p className="mt-2 text-center text-xs text-zinc-400 dark:text-zinc-500">
           Explore a real demo portal — no account needed.
         </p>

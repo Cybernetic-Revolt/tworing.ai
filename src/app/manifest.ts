@@ -12,7 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/app?source=pwa",
     scope: "/",
     display: "standalone",
-    orientation: "portrait",
+    // No orientation lock: the calls table and calendar are wide views, and an Android tablet
+    // in landscape should not be refused.
     background_color: "#fafafa",
     theme_color: "#18181b",
     icons: [

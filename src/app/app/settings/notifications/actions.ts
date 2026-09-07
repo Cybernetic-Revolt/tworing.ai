@@ -4,11 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { canManagePush } from "@/lib/push";
 
 // Per-user (not per-org) preferences: which events reach the user's devices. Any signed-in
-// member may set their own — there is nothing here that touches another user or the org.
+// member may set their own — there is nothing here that touches another user or the org —
+// except the shared demo login, whose "own" preferences would be everyone's.
 export async function saveNotificationPrefs(form: FormData): Promise<void> {
   const session = await requireSession();
+  if (!canManagePush(session)) redirect("/app/settings/notifications");
   const data = {
     calls: form.get("calls") === "on",
     bookings: form.get("bookings") === "on",

@@ -94,6 +94,7 @@ export default async function CapturedPage({
 
   const openCount = tasks.filter((t) => t.status === "OPEN").length;
   const overdue = tasks.filter(
+    // eslint-disable-next-line react-hooks/purity -- server component: per-request time is the intent
     (t) => t.status === "OPEN" && t.dueAt && t.dueAt.getTime() < Date.now(),
   ).length;
 
@@ -148,6 +149,7 @@ export default async function CapturedPage({
             // a note, and re-testing it is how a redundant check hides a real one later.
             const task = r.kind === "NOTE" ? null : r;
             const isOpen = task?.status === "OPEN";
+            // eslint-disable-next-line react-hooks/purity -- server component: per-request time is the intent
             const isOverdue = Boolean(isOpen && task?.due && task.due.getTime() < Date.now());
             return (
               <li

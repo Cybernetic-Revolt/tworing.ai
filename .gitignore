@@ -66,3 +66,6 @@ prisma/*.db-journal
 .vscode/
 .idea/
 coverage/
+
+# FORGE harness copies (run from the repo root so tsx resolves node_modules); never committed.
+.forge/

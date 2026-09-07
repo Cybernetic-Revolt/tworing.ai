@@ -27,6 +27,7 @@ export default async function AdminClientsPage({
   await requireEngineer();
   const { error } = await searchParams;
 
+  // eslint-disable-next-line react-hooks/purity -- server component: per-request time is the intent
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [orgs, recentCalls] = await Promise.all([
     prisma.org.findMany({

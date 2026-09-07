@@ -264,7 +264,7 @@ function HeroCard() {
             Hi, I need to book someone for Tuesday.
           </div>
           <div className="max-w-[90%] rounded-2xl rounded-tl-sm bg-zinc-100 px-3 py-2 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
-            You're all set for Tuesday at 2:00 PM. I'll text a confirmation.
+            You&apos;re all set for Tuesday at 2:00 PM. I&apos;ll text a confirmation.
           </div>
         </div>
 
@@ -296,7 +296,7 @@ export default function Home() {
             <a href="#calculator" className="rounded hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:text-zinc-100">Calculator</a>
             <a href="#pricing" className="rounded hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:text-zinc-100">Pricing</a>
             <a href="#faq" className="rounded hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:text-zinc-100">FAQ</a>
-            <a href="/demo" className="rounded hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:text-zinc-100">Live demo</a>
+            <Link href="/demo" className="rounded hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:text-zinc-100">Live demo</Link>
           </nav>
           <div className="flex items-center gap-1.5">
             <Link
@@ -335,8 +335,8 @@ export default function Home() {
               Every missed call is a customer your competitor just won.
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-zinc-600 lg:mx-0 dark:text-zinc-400">
-              You're on a job, up a ladder, or driving to the next call — you
-              can't pick up every time, and the caller just dials the next
+              You&apos;re on a job, up a ladder, or driving to the next call — you
+              can&apos;t pick up every time, and the caller just dials the next
               result on Google. TwoRing answers in two rings, books the
               appointment right into your calendar during the call, and shows
               you exactly what it earned you every month, in dollars.
@@ -453,7 +453,7 @@ export default function Home() {
           Every month you get the <strong>Found Money Report</strong>: calls
           answered that would have gone to voicemail, appointments booked, and
           what that work was worth against the cost of your plan. Backed by the{" "}
-          <strong>Found Money Guarantee</strong> — if TwoRing doesn't book you
+          <strong>Found Money Guarantee</strong> — if TwoRing doesn&apos;t book you
           more than its price in your first 60 days, we refund you.
         </p>
       </section>
@@ -462,7 +462,7 @@ export default function Home() {
       <section className="border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mx-auto max-w-6xl px-4 py-20">
           <h2 className="text-center font-display text-3xl font-normal sm:text-4xl">
-            What happens to the call you can't take?
+            What happens to the call you can&apos;t take?
           </h2>
           <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
             {[
@@ -627,12 +627,12 @@ export default function Home() {
           ))}
         </div>
         <p className="mt-4 text-sm">
-          <a
+          <Link
             href="/demo"
             className={`rounded font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 ${FOCUS_RING}`}
           >
             Or explore the client portal with sample data →
-          </a>
+          </Link>
         </p>
       </section>
 
@@ -700,7 +700,7 @@ export default function Home() {
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-zinc-600 dark:text-zinc-400">
           Start free for two weeks. Keep your number, keep your carrier, and let
-          TwoRing catch every call you can't.
+          TwoRing catch every call you can&apos;t.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link

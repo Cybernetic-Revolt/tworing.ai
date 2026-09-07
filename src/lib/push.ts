@@ -13,6 +13,19 @@
 // key reaches the browser at request time (as a prop), never baked into the build.
 import webpush from "web-push";
 import { prisma } from "@/lib/db";
+import { DEMO_USER_EMAIL } from "@/lib/demo";
+
+/**
+ * Whether this session may enrol devices or set preferences.
+ *
+ * The demo login is one shared, passwordless user with a membership in every demo org — the
+ * repo's rule is that it is read-only. Letting it subscribe would let any anonymous visitor
+ * pile up subscription rows, flip the shared preferences, and receive whatever those orgs'
+ * events carry. So: not the demo user, and that is the whole test.
+ */
+export function canManagePush(session: { email: string }): boolean {
+  return session.email !== DEMO_USER_EMAIL;
+}
 
 export type PushKind = "call" | "booking" | "pending";
 
@@ -149,8 +162,13 @@ export function selectRecipients(members: Member[], kind: PushKind): string[] {
 
 // ---------------------------------------------------------------------------------------
 // Delivery. The sender is injected so the prune/isolation contract is testable without a
-// push service: 404/410 => the endpoint is dead, delete it; any other failure => log and
-// carry on to the next device.
+// push service: 404/410 => the endpoint is dead; 401/403 => the subscription was created
+// against a different VAPID key than the one we now sign with (a rotation) and can never
+// succeed — delete it either way, and the device re-subscribes on its next visit to
+// Settings → Notifications. Any other failure => log and carry on to the next device.
+
+/** Push-service statuses after which this subscription row can never deliver again. */
+export const DEAD_STATUSES = new Set([401, 403, 404, 410]);
 
 export type Sub = { id: string; endpoint: string; p256dh: string; auth: string };
 export type SendIO = {
@@ -174,7 +192,7 @@ export async function deliver(
       await io.touch(sub.id).catch(() => {});
     } catch (err) {
       const status = (err as { statusCode?: number })?.statusCode;
-      if (status === 404 || status === 410) {
+      if (status !== undefined && DEAD_STATUSES.has(status)) {
         pruned++;
         await io.prune(sub.id).catch(() => {});
       } else {
@@ -196,21 +214,28 @@ export async function notifyOrg(orgId: string, payload: PushPayload): Promise<vo
   const keys = vapid();
   if (!keys) return;
 
+  // The demo user is excluded here too, so even a row that somehow exists never gets a push.
   const memberships = await prisma.membership.findMany({
-    where: { orgId },
+    where: { orgId, user: { email: { not: DEMO_USER_EMAIL } } },
     select: { userId: true, user: { select: { notificationPref: true } } },
   });
   const userIds = selectRecipients(
     memberships.map((m) => ({ userId: m.userId, pref: m.user.notificationPref })),
     payload.kind,
   );
-  if (userIds.length === 0) return;
+  if (userIds.length === 0) {
+    console.log("push", payload.kind, { orgId, recipients: 0, reason: "no member wants this kind" });
+    return;
+  }
 
   const subs = await prisma.pushSubscription.findMany({
     where: { userId: { in: userIds } },
     select: { id: true, endpoint: true, p256dh: true, auth: true },
   });
-  if (subs.length === 0) return;
+  if (subs.length === 0) {
+    console.log("push", payload.kind, { orgId, recipients: userIds.length, devices: 0 });
+    return;
+  }
 
   webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey);
   const result = await deliver(subs, payload, {

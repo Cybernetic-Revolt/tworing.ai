@@ -327,7 +327,7 @@ export async function POST(req: NextRequest) {
     org.id,
     // The caller's name is what the AI extracted onto the lead, not a field of the call row.
     callNotification({ ...call, callerName: call.callerName ?? lead?.name ?? null }),
-  ).catch(() => {});
+  ).catch((err) => console.error("push notify failed", { callId: call.id }, err));
   if (org.notifyEmail) {
     const tpl = leadSummaryEmail({
       orgName: org.name,

@@ -12,6 +12,52 @@ type State =
   | { kind: "on"; endpoint: string }
   | { kind: "error"; message: string };
 
+function sameKey(a: ArrayBuffer | null | undefined, b: Uint8Array): boolean {
+  if (!a || a.byteLength !== b.byteLength) return false;
+  const av = new Uint8Array(a);
+  for (let i = 0; i < av.length; i++) if (av[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * The subscription this browser holds, but only if it was made with the key the server signs
+ * with today. After a VAPID rotation the old one can never deliver again (the push service
+ * refuses our new signature for it), so it is dropped here rather than re-registered — the
+ * user then sees "off" and one tap makes a fresh one with the new key.
+ */
+async function currentSubscription(reg: ServiceWorkerRegistration, key: Uint8Array): Promise<PushSubscription | null> {
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return null;
+  if (sameKey(sub.options.applicationServerKey, key)) return sub;
+  await fetch("/api/push/unsubscribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ endpoint: sub.endpoint }),
+  }).catch(() => {});
+  await sub.unsubscribe().catch(() => {});
+  return null;
+}
+
+async function register(sub: PushSubscription): Promise<void> {
+  const res = await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ subscription: sub.toJSON() }),
+  });
+  if (!res.ok) throw new Error(`server said ${res.status}`);
+}
+
+/** Browser errors in words a business owner can act on. */
+function explain(err: unknown): string {
+  const name = (err as { name?: string })?.name ?? "";
+  const msg = String((err as { message?: string })?.message ?? err);
+  if (name === "NotAllowedError") return "your browser didn't allow notifications for this site.";
+  if (name === "AbortError" || /push service/i.test(msg)) return "your browser couldn't reach its notification service. Check the connection and try again.";
+  if (/server said 503/.test(msg)) return "push isn't switched on for this server yet.";
+  if (/server said/.test(msg)) return "the server didn't accept this device. Try again in a moment.";
+  return "something went wrong in the browser. Reload and try again.";
+}
+
 // The device-level switch. Everything here happens in the browser: the permission prompt is
 // only ever triggered by the button (a tap), the subscription is created against the
 // server's VAPID public key, and the result is posted to /api/push/subscribe.
@@ -36,24 +82,20 @@ export function PushControls({ publicKey }: { publicKey: string }) {
         return;
       }
       const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
+      const sub = await currentSubscription(reg, urlBase64ToUint8Array(publicKey));
       if (cancelled) return;
       if (sub) {
-        // Re-post so the server row survives a wiped database or a rotated key.
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ subscription: sub.toJSON() }),
-        }).catch(() => {});
+        // Re-post so the server row survives a wiped database; same key, so this is a no-op update.
+        await register(sub).catch(() => {});
         setState({ kind: "on", endpoint: sub.endpoint });
       } else {
         setState({ kind: "off" });
       }
-    })().catch((err) => setState({ kind: "error", message: String(err) }));
+    })().catch((err) => setState({ kind: "error", message: explain(err) }));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [publicKey]);
 
   async function turnOn() {
     setBusy(true);
@@ -64,22 +106,18 @@ export function PushControls({ publicKey }: { publicKey: string }) {
         setState(perm === "denied" ? { kind: "blocked" } : { kind: "off" });
         return;
       }
+      const key = urlBase64ToUint8Array(publicKey);
       const reg = await navigator.serviceWorker.ready;
       const sub =
-        (await reg.pushManager.getSubscription()) ??
+        (await currentSubscription(reg, key)) ??
         (await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+          applicationServerKey: key as BufferSource,
         }));
-      const res = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subscription: sub.toJSON() }),
-      });
-      if (!res.ok) throw new Error(`server said ${res.status}`);
+      await register(sub);
       setState({ kind: "on", endpoint: sub.endpoint });
     } catch (err) {
-      setState({ kind: "error", message: String(err) });
+      setState({ kind: "error", message: explain(err) });
     } finally {
       setBusy(false);
     }
@@ -100,7 +138,7 @@ export function PushControls({ publicKey }: { publicKey: string }) {
       }
       setState({ kind: "off" });
     } catch (err) {
-      setState({ kind: "error", message: String(err) });
+      setState({ kind: "error", message: explain(err) });
     } finally {
       setBusy(false);
     }
@@ -129,9 +167,8 @@ export function PushControls({ publicKey }: { publicKey: string }) {
       {state.kind === "ios-not-installed" && (
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           On iPhone and iPad, notifications only work once TwoRing is on your home screen.
-          Tap <ShareIcon /> <strong>Share</strong>, then{" "}
-          <strong>Add to Home Screen</strong>, open TwoRing from there, and come back to this
-          page.
+          Tap <ShareIcon /> <strong>Share</strong>, then <strong>Add to Home Screen</strong>,
+          open TwoRing from there, and come back to this page.
         </p>
       )}
       {state.kind === "blocked" && (
@@ -166,9 +203,14 @@ export function PushControls({ publicKey }: { publicKey: string }) {
         </div>
       )}
       {state.kind === "error" && (
-        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
-          Couldn&apos;t set up notifications: {state.message}
-        </p>
+        <div className="mt-2 flex flex-col gap-3 text-sm">
+          <p className="text-red-700 dark:text-red-300">
+            Couldn&apos;t turn on notifications — {state.message}
+          </p>
+          <button type="button" onClick={turnOn} disabled={busy} className={`${button} self-start`}>
+            Try again
+          </button>
+        </div>
       )}
     </div>
   );

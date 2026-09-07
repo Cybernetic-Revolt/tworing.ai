@@ -1,6 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { pushPublicKey } from "@/lib/push";
+import { canManagePush, pushPublicKey } from "@/lib/push";
 import { SettingsTabs } from "../../settings-tabs";
 import { saveNotificationPrefs } from "./actions";
 import { PushControls } from "./push-controls";
@@ -19,6 +19,26 @@ export default async function NotificationsPage({
     prisma.pushSubscription.count({ where: { userId: session.userId } }),
   ]);
   const publicKey = pushPublicKey();
+  const demo = !canManagePush(session);
+
+  if (demo) {
+    return (
+      <div className="max-w-2xl">
+        <SettingsTabs />
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Notifications
+        </h1>
+        <p
+          data-push-state="demo"
+          className="mt-3 rounded-xl border border-zinc-200 bg-white p-5 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400"
+        >
+          In the demo, notifications are switched off — this login is shared. On your own
+          account, this page turns on push notifications per device and lets you choose which
+          events reach your phone.
+        </p>
+      </div>
+    );
+  }
 
   const toggles = [
     {

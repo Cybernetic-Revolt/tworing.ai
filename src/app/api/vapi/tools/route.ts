@@ -172,7 +172,9 @@ async function bookCore(
   void pushAppointment(appt.id, "create").catch(() => {});
   // The owner's phone: "Booked: Tue 2:00 PM" — or, under CONFIRM_FIRST, the booking that is
   // now waiting on them. Fire-and-forget like the rest of the fan-out.
-  void notifyOrg(orgId, bookingNotification(appt, tz)).catch(() => {});
+  void notifyOrg(orgId, bookingNotification(appt, tz)).catch((err) =>
+    console.error("push notify failed", { appointmentId: appt.id }, err),
+  );
   void fireWebhook(orgId, "appointment.created", {
     id: appt.id,
     customerName: appt.customerName,
