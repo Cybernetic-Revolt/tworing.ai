@@ -40,6 +40,62 @@ export function pushSupported(): boolean {
   );
 }
 
+function sameKey(a: ArrayBuffer | null | undefined, b: Uint8Array): boolean {
+  if (!a || a.byteLength !== b.byteLength) return false;
+  const av = new Uint8Array(a);
+  for (let i = 0; i < av.length; i++) if (av[i] !== b[i]) return false;
+  return true;
+}
+
+async function post(path: string, body: unknown): Promise<Response> {
+  return fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Tell the server about a subscription. Throws on a non-2xx so callers can show it. */
+export async function registerSubscription(sub: PushSubscription): Promise<void> {
+  const res = await post("/api/push/subscribe", { subscription: sub.toJSON() });
+  if (!res.ok) throw new Error(`server said ${res.status}`);
+}
+
+/**
+ * The subscription this browser should be using, given the key the server signs with today.
+ *
+ * - No subscription: returns null (nothing is created here without a tap — see PushControls).
+ * - Subscription made with today's key: re-registered (a no-op update) and returned.
+ * - Subscription made with a PREVIOUS key (a VAPID rotation): it can never deliver again, so
+ *   it is dropped on both sides. Then, if the user already granted permission, a fresh one
+ *   is created with the new key and registered — no tap needed, and nothing prompts. If
+ *   permission is not granted, returns null and the settings page shows "off".
+ *
+ * Runs on every portal page load (PwaRegister) so a rotation heals itself the next time the
+ * owner opens the app, not the next time they happen to visit Settings.
+ */
+export async function ensureFreshSubscription(
+  reg: ServiceWorkerRegistration,
+  publicKey: string,
+): Promise<PushSubscription | null> {
+  const key = urlBase64ToUint8Array(publicKey);
+  const existing = await reg.pushManager.getSubscription();
+  if (!existing) return null;
+  if (sameKey(existing.options.applicationServerKey, key)) {
+    await registerSubscription(existing).catch(() => {});
+    return existing;
+  }
+  await post("/api/push/unsubscribe", { endpoint: existing.endpoint }).catch(() => {});
+  await existing.unsubscribe().catch(() => {});
+  if (Notification.permission !== "granted") return null;
+  const fresh = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: key as BufferSource,
+  });
+  await registerSubscription(fresh);
+  return fresh;
+}
+
 /** VAPID public key (base64url) → the Uint8Array `subscribe()` wants. */
 export function urlBase64ToUint8Array(base64url: string): Uint8Array {
   const padding = "=".repeat((4 - (base64url.length % 4)) % 4);

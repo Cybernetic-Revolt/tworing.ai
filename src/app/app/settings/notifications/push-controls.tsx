@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShareIcon, isIOS, isStandalone, pushSupported, urlBase64ToUint8Array } from "@/lib/pwa-client";
+import { ShareIcon, ensureFreshSubscription, isIOS, isStandalone, pushSupported, registerSubscription, urlBase64ToUint8Array } from "@/lib/pwa-client";
 
 type State =
   | { kind: "loading" }
@@ -11,41 +11,6 @@ type State =
   | { kind: "off" }
   | { kind: "on"; endpoint: string }
   | { kind: "error"; message: string };
-
-function sameKey(a: ArrayBuffer | null | undefined, b: Uint8Array): boolean {
-  if (!a || a.byteLength !== b.byteLength) return false;
-  const av = new Uint8Array(a);
-  for (let i = 0; i < av.length; i++) if (av[i] !== b[i]) return false;
-  return true;
-}
-
-/**
- * The subscription this browser holds, but only if it was made with the key the server signs
- * with today. After a VAPID rotation the old one can never deliver again (the push service
- * refuses our new signature for it), so it is dropped here rather than re-registered — the
- * user then sees "off" and one tap makes a fresh one with the new key.
- */
-async function currentSubscription(reg: ServiceWorkerRegistration, key: Uint8Array): Promise<PushSubscription | null> {
-  const sub = await reg.pushManager.getSubscription();
-  if (!sub) return null;
-  if (sameKey(sub.options.applicationServerKey, key)) return sub;
-  await fetch("/api/push/unsubscribe", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ endpoint: sub.endpoint }),
-  }).catch(() => {});
-  await sub.unsubscribe().catch(() => {});
-  return null;
-}
-
-async function register(sub: PushSubscription): Promise<void> {
-  const res = await fetch("/api/push/subscribe", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ subscription: sub.toJSON() }),
-  });
-  if (!res.ok) throw new Error(`server said ${res.status}`);
-}
 
 /** Browser errors in words a business owner can act on. */
 function explain(err: unknown): string {
@@ -82,11 +47,11 @@ export function PushControls({ publicKey }: { publicKey: string }) {
         return;
       }
       const reg = await navigator.serviceWorker.ready;
-      const sub = await currentSubscription(reg, urlBase64ToUint8Array(publicKey));
+      // Re-registers a current subscription, or replaces one made under a rotated key
+      // (automatically when permission is already granted). Never prompts.
+      const sub = await ensureFreshSubscription(reg, publicKey);
       if (cancelled) return;
       if (sub) {
-        // Re-post so the server row survives a wiped database; same key, so this is a no-op update.
-        await register(sub).catch(() => {});
         setState({ kind: "on", endpoint: sub.endpoint });
       } else {
         setState({ kind: "off" });
@@ -106,15 +71,14 @@ export function PushControls({ publicKey }: { publicKey: string }) {
         setState(perm === "denied" ? { kind: "blocked" } : { kind: "off" });
         return;
       }
-      const key = urlBase64ToUint8Array(publicKey);
       const reg = await navigator.serviceWorker.ready;
       const sub =
-        (await currentSubscription(reg, key)) ??
+        (await ensureFreshSubscription(reg, publicKey)) ??
         (await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: key as BufferSource,
+          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
         }));
-      await register(sub);
+      await registerSubscription(sub);
       setState({ kind: "on", endpoint: sub.endpoint });
     } catch (err) {
       setState({ kind: "error", message: explain(err) });

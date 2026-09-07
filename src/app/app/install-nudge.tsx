@@ -75,13 +75,16 @@ export function InstallNudge() {
 
   async function install() {
     if (!deferred) return;
-    await deferred.prompt();
-    const { outcome } = await deferred.userChoice;
-    if (outcome === "accepted") {
-      deferred = null;
-      dismissedThisSession = true;
-      notify();
-    }
+    const ev = deferred;
+    // A beforeinstallprompt event can be prompt()ed once; drop it either way so a second
+    // click can't call prompt() on a consumed event. "Not now" at the browser's dialog counts
+    // as "not now" for the card too.
+    deferred = null;
+    await ev.prompt();
+    const { outcome } = await ev.userChoice;
+    if (outcome === "accepted") dismissedThisSession = true;
+    else dismiss();
+    notify();
   }
 
   if (mode === "hidden") return null;

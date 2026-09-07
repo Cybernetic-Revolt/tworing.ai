@@ -11,6 +11,7 @@
 //
 // Sending needs VAPID keys. The private key lives only in the server env file; the public
 // key reaches the browser at request time (as a prop), never baked into the build.
+import { createECDH } from "node:crypto";
 import webpush from "web-push";
 import { prisma } from "@/lib/db";
 import { DEMO_USER_EMAIL } from "@/lib/demo";
@@ -40,10 +41,36 @@ export type PushPayload = {
   tag: string;
 };
 
+/**
+ * True when the public key is the one derived from the private key.
+ *
+ * A pair that does not match (a half-edited env file) would sign every push with a key the
+ * subscriptions were never made for: every push service answers 403, and the 401/403 prune
+ * below would then delete every device, silently, on every event. So a mismatch is treated
+ * as "not configured" and shouted once, rather than acted on.
+ */
+export function vapidPairMatches(publicKey: string, privateKey: string): boolean {
+  try {
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(Buffer.from(privateKey, "base64url"));
+    return ecdh.getPublicKey().equals(Buffer.from(publicKey, "base64url"));
+  } catch {
+    return false;
+  }
+}
+
+let pairWarned = false;
 function vapid(): { publicKey: string; privateKey: string; subject: string } | null {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   if (!publicKey || !privateKey) return null;
+  if (!vapidPairMatches(publicKey, privateKey)) {
+    if (!pairWarned) {
+      pairWarned = true;
+      console.error("VAPID_PUBLIC_KEY does not match VAPID_PRIVATE_KEY — push disabled until the env file is fixed");
+    }
+    return null;
+  }
   return { publicKey, privateKey, subject: process.env.VAPID_SUBJECT ?? "https://tworing.ai" };
 }
 
@@ -96,12 +123,18 @@ export function compactWhen(d: Date, tz: string): string {
 
 // The notification carries its own timestamp, so the call body does not repeat the time: it
 // leads with who called, then what the AI wrote down.
+//
+// A call that booked a job already produced a "Booked: …" push mid-call; this one REPLACES it
+// (same tag) rather than stacking a second card, so the owner ends up with one notification
+// per call — the richer one, with the summary.
 export function callNotification(call: {
   id: string;
   callerName: string | null;
   callerNumber: string | null;
   disposition: string | null;
   summary: string | null;
+  /** The appointment this call booked, if any — its tag is reused so the two pushes collapse. */
+  bookedAppointmentId?: string | null;
 }): PushPayload {
   const title =
     call.disposition === "BOOKED"
@@ -117,7 +150,8 @@ export function callNotification(call: {
               : "New call";
   const lead = who(call.callerName, call.callerNumber);
   const body = call.summary ? `${lead}\n${clip(call.summary, 140)}` : lead;
-  return { kind: "call", title, body, url: `/app/calls/${call.id}`, tag: `call-${call.id}` };
+  const tag = call.bookedAppointmentId ? `appt-${call.bookedAppointmentId}` : `call-${call.id}`;
+  return { kind: "call", title, body, url: `/app/calls/${call.id}`, tag };
 }
 
 export function bookingNotification(appt: {

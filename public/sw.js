@@ -47,10 +47,14 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = new URL((event.notification.data && event.notification.data.url) || "/app", self.location.origin).href;
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      // Reuse an open portal window (the installed app) rather than spawning a second one.
-      // navigate() rejects for a window this worker doesn't control (e.g. a marketing tab
-      // opened before the worker installed) — fall back to opening the link fresh.
+    // Reuse an open portal window (the installed app) rather than spawning a second one —
+    // a window this worker CONTROLS first (navigate() works there); only then an
+    // uncontrolled one (e.g. a marketing tab opened before the worker installed), where
+    // navigate() rejects and we fall back to opening the link fresh.
+    self.clients
+      .matchAll({ type: "window" })
+      .then((controlled) => (controlled.length ? controlled : self.clients.matchAll({ type: "window", includeUncontrolled: true })))
+      .then((clients) => {
       for (const c of clients) {
         if (new URL(c.url).origin === self.location.origin && "focus" in c) {
           const go = c.navigate ? c.navigate(url).then((w) => (w || c).focus()) : c.focus();
@@ -67,11 +71,15 @@ self.addEventListener("notificationclick", (event) => {
 // the owner having to revisit Settings. The fetch carries the session cookie (same-origin).
 self.addEventListener("pushsubscriptionchange", (event) => {
   const key = event.oldSubscription && event.oldSubscription.options.applicationServerKey;
-  if (!key) return;
   event.waitUntil(
-    self.registration.pushManager
-      .subscribe({ userVisibleOnly: true, applicationServerKey: key })
+    // Some browsers give no oldSubscription; the current one (if any) still carries the key.
+    (key ? Promise.resolve(key) : self.registration.pushManager.getSubscription().then((s) => s && s.options.applicationServerKey))
+      .then((k) => {
+        if (!k) return;
+        return self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: k });
+      })
       .then((sub) =>
+        sub &&
         fetch("/api/push/subscribe", {
           method: "POST",
           headers: { "content-type": "application/json" },
