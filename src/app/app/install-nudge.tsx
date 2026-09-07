@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
-import { ShareIcon, isIOS, isStandalone } from "@/lib/pwa-client";
+import { ShareIcon, isAndroid, isFirefox, isIOS, isStandalone } from "@/lib/pwa-client";
 
 const DISMISS_KEY = "tworing.installNudge.dismissed";
 
@@ -11,7 +11,7 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-type Mode = "hidden" | "ios" | "prompt";
+type Mode = "hidden" | "ios" | "prompt" | "firefox-android" | "firefox-desktop";
 
 // The browser's install state is external to React, so it is read through
 // useSyncExternalStore: the server snapshot is always "hidden" (no flash, no hydration
@@ -50,14 +50,18 @@ function snapshot(): Mode {
   if (isStandalone() || dismissed()) return "hidden";
   if (deferred) return "prompt";
   if (isIOS()) return "ios";
+  // Firefox never fires beforeinstallprompt: Android installs from the menu, desktop can't
+  // install at all — but push works in both, so say so rather than showing nothing.
+  if (isFirefox()) return isAndroid() ? "firefox-android" : "firefox-desktop";
   return "hidden";
 }
 
 // "Put TwoRing on your phone" — shown on the dashboard only when the portal is NOT already
 // installed, and only where the browser can actually do it: Chrome/Edge fire
 // `beforeinstallprompt` and get a one-tap Install button; iOS has no such API, so it gets the
-// Share → Add to Home Screen steps. Anything else (desktop Firefox, a Safari tab on a Mac)
-// gets nothing — a nudge with no working action is noise.
+// Share → Add to Home Screen steps; Firefox gets its menu path (Android) or is told
+// notifications work here and the app install needs Chrome/Edge (desktop). Anything else
+// (a Safari tab on a Mac) gets nothing — a nudge with no working action is noise.
 //
 // Dismissal sticks per browser. Installing is worth one ask, not a daily one.
 export function InstallNudge() {
@@ -97,7 +101,11 @@ export function InstallNudge() {
     >
       <div>
         <p className="font-medium text-emerald-900 dark:text-emerald-100">
-          {mode === "ios" ? "Put TwoRing on your home screen" : "Install TwoRing as an app"}
+          {mode === "ios" || mode === "firefox-android"
+            ? "Put TwoRing on your home screen"
+            : mode === "firefox-desktop"
+              ? "Get notified in Firefox"
+              : "Install TwoRing as an app"}
         </p>
         <p className="mt-0.5 text-emerald-800/80 dark:text-emerald-200/80">
           {mode === "ios" ? (
@@ -108,6 +116,23 @@ export function InstallNudge() {
                 notifications
               </Link>{" "}
               so new calls and bookings buzz your phone.
+            </>
+          ) : mode === "firefox-android" ? (
+            <>
+              Open the <strong>⋮</strong> menu, then <strong>Add to Home screen</strong>. Then
+              turn on{" "}
+              <Link href="/app/settings/notifications" className="underline">
+                notifications
+              </Link>{" "}
+              so new calls and bookings buzz your phone.
+            </>
+          ) : mode === "firefox-desktop" ? (
+            <>
+              Firefox can&apos;t install TwoRing as an app, but{" "}
+              <Link href="/app/settings/notifications" className="underline">
+                notifications
+              </Link>{" "}
+              work here. For the app itself, open tworing.ai in Chrome or Edge.
             </>
           ) : (
             <>

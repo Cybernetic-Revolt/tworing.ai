@@ -31,6 +31,15 @@ export function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
+/** Firefox has no install prompt (desktop has no install at all); it needs its own words. */
+export function isFirefox(): boolean {
+  return typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent);
+}
+
+export function isAndroid(): boolean {
+  return typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
+}
+
 export function pushSupported(): boolean {
   return (
     typeof window !== "undefined" &&
