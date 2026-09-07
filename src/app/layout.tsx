@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Calistoga } from "next/font/google";
 import "./globals.css";
 
@@ -39,6 +39,27 @@ export const metadata: Metadata = {
     title: "TwoRing — The 24/7 AI receptionist for the trades",
     description: SITE_DESC,
   },
+  // Installable web app. The manifest is site-wide so the login page is inside the app's
+  // scope; the icons here are what iOS uses (it ignores the manifest's icon list).
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icons/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "TwoRing",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#18181b",
+  width: "device-width",
+  initialScale: 1,
+  // Installed apps on iOS render under the status bar; cover the notch area with our own
+  // background rather than leaving a white band.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

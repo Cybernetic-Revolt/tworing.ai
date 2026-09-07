@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 // The account-area routes stay as siblings under /app/*; this bar gives them a
 // single "Settings" home with sub-tabs, so the top nav can stay focused on the
@@ -11,6 +12,7 @@ const TABS = [
   { href: "/app/settings/receptionist", label: "Receptionist" },
   { href: "/app/team", label: "Team" },
   { href: "/app/connections", label: "Connections" },
+  { href: "/app/settings/notifications", label: "Notifications" },
   { href: "/app/account", label: "Account" },
 ];
 
@@ -23,6 +25,13 @@ export function SettingsTabs() {
   const current = TABS.map((t) => t.href)
     .filter((href) => pathname === href || pathname.startsWith(href + "/"))
     .sort((a, b) => b.length - a.length)[0];
+
+  // On a phone the strip scrolls; bring the active tab into view so the page says where you
+  // are without a swipe (the later tabs — Notifications, Account — were off-screen on load).
+  const activeRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [current]);
 
   return (
     <div className="mb-6">
@@ -39,6 +48,7 @@ export function SettingsTabs() {
             <Link
               key={t.href}
               href={t.href}
+              ref={active ? activeRef : undefined}
               aria-current={active ? "page" : undefined}
               className={`-mb-px whitespace-nowrap rounded-t-sm border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 active

@@ -92,6 +92,8 @@ export function middleware(request: NextRequest) {
 export const config = {
   // Static assets and Next internals must pass untouched or nothing renders.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image).*)",
+    // sw.js, the manifest and the icon set are fetched by the browser without cookies (the
+    // service worker fetch especially) — a redirect to /login there would break install.
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|manifest.webmanifest|sw.js|icons/).*)",
   ],
 };

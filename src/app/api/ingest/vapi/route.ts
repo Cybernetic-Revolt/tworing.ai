@@ -7,6 +7,7 @@ import { leadSummaryEmail } from "@/lib/email-templates";
 import { sendSmsToCustomer } from "@/lib/sms";
 import { pushBookingToJobber, pushLeadToJobber } from "@/lib/jobber-sync";
 import { normalizePhone } from "@/lib/phone";
+import { callNotification, notifyOrg } from "@/lib/push";
 import { CallDisposition } from "@/generated/prisma/client";
 
 // Vapi server-message envelope; everything beyond what we model is kept in Call.raw
@@ -319,6 +320,14 @@ export async function POST(req: NextRequest) {
   // Owner notification — the platform sends this directly (replaces the n8n
   // email node). Fire-and-forget; recorded in the Messages ledger.
   const org = callOrg.org;
+
+  // Phone push to every member of the org who subscribed. Same facts as the email, one
+  // glance. Fire-and-forget: a push failure must never fail the ingest.
+  void notifyOrg(
+    org.id,
+    // The caller's name is what the AI extracted onto the lead, not a field of the call row.
+    callNotification({ ...call, callerName: call.callerName ?? lead?.name ?? null }),
+  ).catch(() => {});
   if (org.notifyEmail) {
     const tpl = leadSummaryEmail({
       orgName: org.name,

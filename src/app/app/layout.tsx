@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { Logo } from "../brand";
 import { logout } from "./actions";
 import { PortalNav } from "./portal-nav";
+import { PwaRegister } from "./pwa-register";
 
 export const metadata = { title: "TwoRing" };
 
@@ -17,6 +18,7 @@ export default async function PortalLayout({
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
+      <PwaRegister />
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mx-auto max-w-5xl px-4">
           {/* Brand row */}

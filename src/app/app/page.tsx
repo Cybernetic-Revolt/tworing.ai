@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { formatTimeOnly, localDatePlus, wallTime, zonedToUtc } from "@/lib/tz";
 import { formatWhen } from "@/lib/format";
 import { OnboardingChecklist, type OnboardingStep } from "./onboarding-checklist";
+import { InstallNudge } from "./install-nudge";
 
 const TIER_MINUTES: Record<string, number | null> = {
   ANSWER: 400,
@@ -144,6 +145,9 @@ export default async function DashboardPage() {
       <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{dayLabel.format(now)}</p>
 
       {showOnboarding && <OnboardingChecklist steps={onboardingSteps} />}
+
+      {/* Client-side: renders nothing when installed, dismissed, or uninstallable here. */}
+      <InstallNudge />
 
       {/* Stat cards */}
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
