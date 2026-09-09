@@ -340,6 +340,8 @@ export async function POST(req: NextRequest) {
       callerNumber: call.callerNumber,
       startedAt: call.startedAt,
       summary: call.summary,
+      transcript: call.transcript,
+      callId: call.id,
       jobType: lead?.jobType,
       address: lead?.address,
       urgency: lead?.urgency,

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -23,6 +24,19 @@ const OUTCOME_LABELS: Record<string, string> = {
   INQUIRY: "Inquiry",
   MISSED: "Missed",
 };
+
+/** "AI: …" / "User: …" lines → speaker + text. Unlabelled lines keep their text. */
+function turns(transcript: string): { who: string; text: string }[] {
+  return transcript
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = /^(AI|Assistant|User|Caller):\s*(.*)$/i.exec(line);
+      if (!m) return { who: "", text: line };
+      return { who: /^(AI|Assistant)$/i.test(m[1]) ? "Receptionist" : "Caller", text: m[2] };
+    });
+}
 
 export default async function CallDetailPage({
   params,
@@ -109,9 +123,27 @@ export default async function CallDetailPage({
             <h2 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
               Transcript
             </h2>
-            <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-zinc-700 dark:text-zinc-300">
-              {call.transcript ?? "No transcript."}
-            </pre>
+            {call.transcript ? (
+              // One row per turn, speaker-labelled, so it reads as the conversation it was.
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
+                {turns(call.transcript).map((t, i) => (
+                  <Fragment key={i}>
+                    <dt
+                      className={`whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${
+                        t.who === "Caller"
+                          ? "text-zinc-500 dark:text-zinc-400"
+                          : "text-emerald-700 dark:text-emerald-400"
+                      }`}
+                    >
+                      {t.who}
+                    </dt>
+                    <dd className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{t.text}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No transcript.</p>
+            )}
           </section>
         </div>
 

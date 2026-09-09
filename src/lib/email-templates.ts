@@ -10,6 +10,26 @@ function row(label: string, value?: string | null): string {
   return `<tr><td style="padding:4px 12px 4px 0;color:#71717a;font-size:14px">${label}</td><td style="padding:4px 0;font-size:14px"><strong>${escapeHtml(value)}</strong></td></tr>`;
 }
 
+/**
+ * The transcript as a readable conversation. Stored as "AI: …" / "User: …" lines (one per
+ * turn); rendered as labelled rows so the owner can read the whole exchange in the email
+ * instead of only the summary. Unlabelled lines are kept as-is.
+ */
+export function conversationHtml(transcript: string): string {
+  const rows = transcript
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = /^(AI|Assistant|User|Caller):\s*(.*)$/i.exec(line);
+      const who = m ? (/^(AI|Assistant)$/i.test(m[1]) ? "Receptionist" : "Caller") : "";
+      const text = m ? m[2] : line;
+      const color = who === "Caller" ? "#18181b" : "#059669";
+      return `<tr><td style="padding:3px 10px 3px 0;color:${color};font-size:13px;white-space:nowrap;vertical-align:top"><strong>${who}</strong></td><td style="padding:3px 0;font-size:14px">${escapeHtml(text)}</td></tr>`;
+    });
+  return `<table style="border-collapse:collapse;margin:0 0 16px">${rows.join("")}</table>`;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -28,8 +48,13 @@ export function leadSummaryEmail(opts: {
   address?: string | null;
   urgency?: string | null;
   booked?: boolean;
+  /** The full conversation, when the owner should be able to read it all without opening the portal. */
+  transcript?: string | null;
+  /** Deep link target; the button opens this call rather than the dashboard. */
+  callId?: string | null;
 }): { subject: string; html: string } {
   const who = opts.callerName ?? opts.callerNumber ?? "A caller";
+  const portalUrl = opts.callId ? `https://tworing.ai/app/calls/${opts.callId}` : "https://tworing.ai/app";
   const subject = opts.booked
     ? `New booking: ${who}${opts.jobType ? ` — ${opts.jobType}` : ""}`
     : `New lead: ${who}${opts.jobType ? ` — ${opts.jobType}` : ""}`;
@@ -47,7 +72,10 @@ export function leadSummaryEmail(opts: {
     row("Address", opts.address) +
     row("Urgency", opts.urgency) +
     `</table>` +
-    `<p style="margin-top:20px"><a href="https://tworing.ai/app" style="background:#18181b;color:#fff;text-decoration:none;padding:9px 16px;border-radius:6px;font-size:14px;display:inline-block">Open your portal</a></p>` +
+    (opts.transcript
+      ? `<h3 style="font-size:14px;margin:20px 0 6px">Full conversation</h3>` + conversationHtml(opts.transcript)
+      : "") +
+    `<p style="margin-top:20px"><a href="${portalUrl}" style="background:#18181b;color:#fff;text-decoration:none;padding:9px 16px;border-radius:6px;font-size:14px;display:inline-block">${opts.callId ? "Open this call" : "Open your portal"}</a></p>` +
     WRAP_CLOSE;
   return { subject, html };
 }
