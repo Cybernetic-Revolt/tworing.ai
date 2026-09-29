@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireEngineer } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { Logo } from "../brand";
 import { logout } from "../app/actions";
 
@@ -11,6 +12,9 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await requireEngineer();
+  // Surfaced as a badge rather than buried on a page: a trial request nobody opens is a
+  // prospect lost, and the notification email is best-effort.
+  const waiting = await prisma.signup.count({ where: { handled: false } });
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
@@ -38,6 +42,23 @@ export default async function AdminLayout({
                 className="hover:text-zinc-900 dark:hover:text-zinc-100"
               >
                 Assistants
+              </Link>
+              <Link
+                href="/admin/signups"
+                className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Trials
+                {waiting > 0 && (
+                  <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
+                    {waiting}
+                  </span>
+                )}
+              </Link>
+              <Link
+                href="/admin/engineering"
+                className="hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Engineering
               </Link>
               {/* Absolute: the portal lives on the public host, and admin is
                   served from admin.tworing.ai. A relative /app here would be
