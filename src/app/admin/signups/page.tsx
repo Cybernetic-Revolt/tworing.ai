@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireEngineer } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { formatWhen } from "@/lib/format";
+import { signupsWithStatus } from "@/lib/signups";
 import { ConfirmButton } from "../confirm-button";
 import { deleteSignup, setSignupHandled } from "./actions";
 
@@ -22,25 +22,7 @@ export default async function AdminSignupsPage({
   await requireEngineer();
   const { deleted } = await searchParams;
 
-  const signups = await prisma.signup.findMany({ orderBy: { createdAt: "desc" } });
-
-  // Which of these already became clients. Matched on the owner's email first (exact, and
-  // what the trial email is sent to) then on business name, so a handled row is obvious
-  // even when it was never ticked.
-  const orgs = await prisma.org.findMany({
-    select: { id: true, slug: true, name: true, members: { select: { user: { select: { email: true } } } } },
-  });
-  // The admin org route keys on the row id, not the slug; the slug is only for display.
-  const byEmail = new Map<string, { id: string; slug: string }>();
-  const byName = new Map<string, { id: string; slug: string }>();
-  for (const o of orgs) {
-    byName.set(o.name.toLowerCase(), { id: o.id, slug: o.slug });
-    for (const m of o.members) byEmail.set(m.user.email.toLowerCase(), { id: o.id, slug: o.slug });
-  }
-  const existingOrg = (s: { email: string; business: string }) =>
-    byEmail.get(s.email.toLowerCase()) ?? byName.get(s.business.toLowerCase());
-
-  const open = signups.filter((s) => !s.handled && !existingOrg(s));
+  const { rows, waiting } = await signupsWithStatus();
 
   return (
     <div>
@@ -49,10 +31,8 @@ export default async function AdminSignupsPage({
           Trial requests
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {open.length === 0
-            ? "Nothing waiting."
-            : `${open.length} waiting on you`}
-          {signups.length > 0 && ` · ${signups.length} total`}
+          {waiting === 0 ? "Nothing waiting." : `${waiting} waiting on you`}
+          {rows.length > 0 && ` · ${rows.length} total`}
         </p>
       </div>
       <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -66,14 +46,13 @@ export default async function AdminSignupsPage({
         </p>
       )}
 
-      {signups.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="mt-6 rounded-xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
           No trial requests yet.
         </p>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
-          {signups.map((s) => {
-            const org = existingOrg(s);
+          {rows.map(({ signup: s, org }) => {
             const done = s.handled || !!org;
             return (
               <div

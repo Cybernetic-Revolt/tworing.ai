@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireEngineer } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { signupsWithStatus } from "@/lib/signups";
 import { Logo } from "../brand";
 import { logout } from "../app/actions";
 
@@ -13,8 +13,9 @@ export default async function AdminLayout({
 }) {
   const session = await requireEngineer();
   // Surfaced as a badge rather than buried on a page: a trial request nobody opens is a
-  // prospect lost, and the notification email is best-effort.
-  const waiting = await prisma.signup.count({ where: { handled: false } });
+  // prospect lost, and the notification email is best-effort. Shares its definition of
+  // "waiting" with the page so the two can never disagree.
+  const { waiting } = await signupsWithStatus();
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
