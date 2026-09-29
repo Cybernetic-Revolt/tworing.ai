@@ -126,6 +126,12 @@ model Org {
   // Review-request engine (Operations tier): Google review link + on/off.
   googleReviewUrl String?
   reviewRequests  Boolean @default(false)
+
+  // When a SELF-SERVE trial ends. Set only by the signup provisioner, and the single marker
+  // that makes an org a trial. Null means hand-provisioned, which is never hard-stopped —
+  // inferring "trial" from a missing Stripe row would have silenced every org that predates
+  // billing, including our own.
+  trialEndsAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

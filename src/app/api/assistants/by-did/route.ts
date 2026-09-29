@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import { renderTemplate, type TemplateValues } from "@/lib/assistant-template";
 import { resolveTenantKey } from "@/lib/tenant-key";
+import { entitlementForOrg, trialEndedGreeting } from "@/lib/entitlement";
 
 export async function GET(req: NextRequest) {
   const key = await resolveTenantKey(req);
@@ -24,7 +25,10 @@ export async function GET(req: NextRequest) {
 
   const number = await prisma.phoneNumber.findUnique({
     where: { e164 },
-    include: { org: true, assistant: { include: { contacts: true } } },
+    include: {
+      org: { include: { subscription: true } },
+      assistant: { include: { contacts: true } },
+    },
   });
 
   // A TENANT key is scoped to its own org: without this, any valid key could read any org's
@@ -45,6 +49,59 @@ export async function GET(req: NextRequest) {
     // A retired assistant must never answer. Returning it and trusting the caller to check
     // would make this the kind of guard that works until someone forgets.
     return NextResponse.json({ error: "assistant is retired" }, { status: 409 });
+  }
+
+  // Is this account still entitled to answer? This is the only place every inbound call
+  // passes through, so it is the only place the answer can be enforced rather than assumed.
+  // A failure to decide must not take the line down, so an error here answers normally:
+  // losing a client's calls is worse than serving a few minutes past a trial.
+  const ent = await entitlementForOrg(number.org, number.org.subscription, new Date()).catch(
+    (err) => {
+      console.error("entitlement check failed; answering normally", number.orgId, err);
+      return { state: "ok" as const, usedMinutes: 0 };
+    },
+  );
+  if (ent.state === "over_soft") {
+    console.warn("org is over its plan minutes", {
+      orgId: number.orgId,
+      used: ent.usedMinutes,
+      cap: ent.capMinutes,
+    });
+  }
+  if (ent.state === "trial_ended") {
+    // Answered, not dead. The caller is the client's customer and has done nothing wrong;
+    // they get a sentence and a clean goodbye rather than a ring-out or a silent line.
+    console.warn("trial ended — answering with the wind-down greeting", {
+      orgId: number.orgId,
+      reason: ent.reason,
+      used: ent.usedMinutes,
+    });
+    return NextResponse.json(
+      {
+        key: a.key,
+        org: number.orgId,
+        orgName: number.org.name,
+        timezone: number.org.timezone,
+        greeting: trialEndedGreeting(number.org.name),
+        systemPrompt:
+          "The trial for this business has ended. Say the greeting, then end the call " +
+          "politely. Do not take messages, do not book anything, and do not promise a " +
+          "callback. You have no tools.",
+        voiceProvider: a.voiceProvider,
+        voiceId: a.voiceId,
+        tools: [],
+        endCallPhrases: [],
+        endCallMessage: null,
+        transferTo: null,
+        transferMessage: null,
+        silenceTimeoutSeconds: 15,
+        maxDurationSeconds: 60,
+        recordsCall: false,
+        announceRecording: false,
+        contacts: [],
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   // Tags become text here, at the one seam where config leaves the platform, so the engine
