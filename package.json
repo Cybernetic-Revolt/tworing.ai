@@ -11,7 +11,7 @@
     "provision": "tsx scripts/provision-tenant.ts",
     "user": "tsx scripts/create-user.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
-    "test": "tsx tests/entitlement.test.mts"
+    "test": "tsx tests/entitlement.test.mts && tsx tests/provision.test.mts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1120.0",

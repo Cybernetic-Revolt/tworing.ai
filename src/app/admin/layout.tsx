@@ -56,6 +56,12 @@ export default async function AdminLayout({
                 )}
               </Link>
               <Link
+                href="/admin/numbers"
+                className="hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Numbers
+              </Link>
+              <Link
                 href="/admin/engineering"
                 className="hover:text-zinc-900 dark:hover:text-zinc-100"
               >

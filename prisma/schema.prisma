@@ -632,6 +632,28 @@ model Signup {
 
 // Password-reset tokens. Only the SHA-256 hash of the token is stored; the raw
 // token lives only in the emailed link. Single-use and short-lived.
+// Spare DIDs bought ahead of demand so a self-serve signup can be answering calls a minute
+// later. Buying one during signup would put a vendor API call, and its failure modes, in the
+// middle of the one flow that must not fail — and would spend money on every spam submission.
+//
+// A row with no claimedByOrgId is available. Claiming is a compare-and-set on that column
+// rather than a read-then-write, because two signups landing together must never be handed
+// the same number: one caller would reach the other business's receptionist.
+model NumberPool {
+  id             String    @id @default(cuid())
+  e164           String    @unique
+  provider       String    @default("voipms")
+  // The VoIP.ms SIP subaccount this DID routes to, e.g. "100000_sub". Needed to point the
+  // number at the voice engine when it is claimed.
+  sipSubaccount  String?
+  claimedByOrgId String?
+  claimedAt      DateTime?
+  note           String?
+  createdAt      DateTime  @default(now())
+
+  @@index([claimedByOrgId])
+}
+
 model PasswordReset {
   id        String    @id @default(cuid())
   userId    String

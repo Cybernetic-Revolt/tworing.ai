@@ -47,9 +47,9 @@ function ShieldCheckIcon({ className = "" }: { className?: string }) {
 export default async function StartPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string }>;
+  searchParams: Promise<{ sent?: string; ready?: string; error?: string }>;
 }) {
-  const { sent, error } = await searchParams;
+  const { sent, ready, error } = await searchParams;
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 dark:bg-black dark:text-zinc-100">
@@ -99,15 +99,27 @@ export default async function StartPage({
 
         {/* Right — the form / confirmation */}
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-6 sm:p-8 dark:border-zinc-800 dark:bg-zinc-950/60">
-          {sent ? (
+          {ready || sent ? (
             <div className="flex flex-col items-center py-8 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
                 <ShieldCheckIcon className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
               </span>
-              <h2 className="mt-5 font-display text-2xl font-normal">You&apos;re on the list.</h2>
+              <h2 className="mt-5 font-display text-2xl font-normal">
+                {ready ? "Your receptionist is ready." : "You\u2019re on the list."}
+              </h2>
               <p className="mt-3 max-w-sm text-sm text-zinc-600 dark:text-zinc-400">
-                We got your details and someone will reach out shortly to set up
-                your two free weeks — no card, nothing to install. Talk soon.
+                {ready ? (
+                  <>
+                    Check your email — we&apos;ve sent your trial number and a link to set your
+                    password. Call the number and your receptionist will answer. Two free
+                    weeks, no card, nothing to install.
+                  </>
+                ) : (
+                  <>
+                    We got your details and someone will reach out shortly to set up your two
+                    free weeks — no card, nothing to install. Talk soon.
+                  </>
+                )}
               </p>
               <Link
                 href="/"
